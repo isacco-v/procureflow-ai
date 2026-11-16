@@ -1,0 +1,31 @@
+# Secrets and local environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo
+coverage/
+
+# Editor and OS
+.DS_Store
+.idea/
+
+# Local toolchains downloaded only to run checks
+.tools/

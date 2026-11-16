@@ -1,0 +1,32 @@
+# Local PostgreSQL for ProcureFlow AI.
+#
+# The username, password, and database name are development defaults.
+# They match DATABASE_URL in .env.example. Do not reuse them outside this machine.
+#
+# The image includes pgvector so a later retrieval slice can enable the
+# extension without changing the database server. Domain tables are
+# created by Alembic revision 20261116_0002. The baseline revision does
+# not create the extension.
+
+name: procureflow
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: procureflow
+      POSTGRES_PASSWORD: procureflow
+      POSTGRES_DB: procureflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U procureflow -d procureflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:
