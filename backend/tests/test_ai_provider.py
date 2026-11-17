@@ -52,9 +52,28 @@ def test_openai_mode_is_rejected_before_a_client_exists(monkeypatch: pytest.Monk
     get_settings.cache_clear()
 
 
-def test_openai_sdk_is_not_installed() -> None:
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("openai")
+def test_openai_sdk_import_does_not_place_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    constructed: list[dict[str, object]] = []
+
+    class FailingClient:
+        def __init__(self, **kwargs: object) -> None:
+            constructed.append(kwargs)
+            raise AssertionError("OpenAI client constructed")
+
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", FailingClient)
+    importlib.import_module("openai")
+    settings = Settings(_env_file=None)
+    provider = build_ai_provider(settings)
+    provider.complete(_request())
+
+    from app.ai.investigation import build_investigation_model
+
+    model = build_investigation_model(settings)
+    assert provider.name == "mock"
+    assert model.name == "mock"
+    assert constructed == []
 
 
 def test_invalid_ai_mode_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,6 +91,11 @@ def test_defaults_use_mock_mode_without_an_env_file() -> None:
 
     assert settings.ai_mode == "mock"
     assert settings.openai_api_key is None
+    assert settings.openai_model == "gpt-5.4-mini"
+    assert settings.investigation_live_enabled is False
+    assert settings.investigation_max_estimated_cost_usd == Decimal("0.10")
+    assert settings.openai_input_usd_per_million == Decimal("0.75")
+    assert settings.openai_output_usd_per_million == Decimal("4.50")
 
 
 def test_health_can_report_openai_mode_without_invoking_it(
@@ -90,3 +114,80 @@ def test_health_can_report_openai_mode_without_invoking_it(
     assert response.json()["ai_mode"] == "openai"
     dispose_db()
     get_settings.cache_clear()
+
+
+def test_a_key_does_not_enable_a_live_investigation(monkeypatch: pytest.MonkeyPatch) -> None:
+    constructed: list[object] = []
+
+    class FailingClient:
+        def __init__(self, **kwargs: object) -> None:
+            constructed.append(kwargs)
+            raise AssertionError("OpenAI client constructed")
+
+    import openai
+
+    from app.ai.investigation import build_investigation_model
+    from app.ai.openai_investigation import OpenAIInvestigationModel
+
+    monkeypatch.setattr(openai, "OpenAI", FailingClient)
+    disabled = Settings(
+        _env_file=None,
+        ai_mode="openai",
+        openai_api_key="sk-test-not-a-real-key",
+        investigation_live_enabled=False,
+    )
+    missing_key = Settings(
+        _env_file=None,
+        ai_mode="openai",
+        investigation_live_enabled=True,
+    )
+    mock_mode = Settings(
+        _env_file=None,
+        ai_mode="mock",
+        openai_api_key="sk-test-not-a-real-key",
+        investigation_live_enabled=True,
+    )
+
+    with pytest.raises(RealProviderDisabledError):
+        build_investigation_model(disabled)
+    with pytest.raises(RealProviderDisabledError):
+        OpenAIInvestigationModel(disabled)
+    with pytest.raises(RealProviderDisabledError):
+        build_investigation_model(missing_key)
+    assert build_investigation_model(mock_mode).name == "mock"
+    assert constructed == []
+
+
+def test_live_client_is_constructed_only_when_every_gate_is_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[dict[str, object]] = []
+
+    class RecordingClient:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(kwargs)
+
+            def create(**_kwargs: object) -> None:
+                raise AssertionError("OpenAI request")
+
+            self.responses = type("Responses", (), {"create": staticmethod(create)})()
+
+    import openai
+
+    from app.ai.investigation import build_investigation_model
+
+    monkeypatch.setattr(openai, "OpenAI", RecordingClient)
+    settings = Settings(
+        _env_file=None,
+        ai_mode="openai",
+        openai_api_key="sk-test-not-a-real-key",
+        investigation_live_enabled=True,
+    )
+
+    model = build_investigation_model(settings)
+
+    assert model.name == "openai"
+    assert model.model_name == "gpt-5.4-mini"
+    assert created[0]["api_key"] == "sk-test-not-a-real-key"
+    assert created[0]["max_retries"] == 0
+    assert created[0]["timeout"] == settings.openai_request_timeout_seconds

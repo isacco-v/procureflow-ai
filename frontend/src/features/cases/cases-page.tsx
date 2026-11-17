@@ -51,18 +51,19 @@ export function CasesPage() {
             Procurement cases
           </h1>
           <p className='max-w-3xl text-muted-foreground'>
-            Synthetic purchase orders, delivery notes, and invoices.
-            Reconciliation compares those stored lines with deterministic
-            arithmetic.
+            Seeded scenarios and cases created from accepted PDF uploads.
+            Reconciliation compares stored lines with deterministic arithmetic.
+            Exception and needs-review cases can be opened for a read-only
+            investigation.
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Demonstration cases</CardTitle>
+            <CardTitle>Stored cases</CardTitle>
             <CardDescription>
-              Every row is labeled synthetic. The same case produces the same
-              reconciliation result.
+              Synthetic seed rows and uploaded rows stay distinct. The same
+              stored lines produce the same reconciliation result.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -121,7 +122,11 @@ export function CasesPage() {
                       <TableCell>{item.title}</TableCell>
                       <TableCell>{item.supplier.name}</TableCell>
                       <TableCell>
-                        <Badge variant='outline'>Synthetic</Badge>
+                        <Badge variant='outline'>
+                          {item.origin === 'upload'
+                            ? 'Uploaded'
+                            : 'Synthetic seed'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {item.latest_reconciliation_status ? (

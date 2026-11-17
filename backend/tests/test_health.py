@@ -49,3 +49,23 @@ def test_health_does_not_require_a_database(client) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
+
+
+def test_logs_redact_api_keys() -> None:
+    import logging
+
+    from app.core.logging import JsonFormatter
+
+    record = logging.LogRecord(
+        name="procureflow",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="provider failed for sk-test-secret-value",
+        args=(),
+        exc_info=None,
+    )
+    formatted = JsonFormatter().format(record)
+
+    assert "sk-test-secret-value" not in formatted
+    assert "[redacted]" in formatted

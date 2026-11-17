@@ -1,1 +1,1 @@
-"""Application services for cases, reconciliation, and synthetic seed."""
+"""Application services for cases, reconciliation, policy retrieval, and investigation."""

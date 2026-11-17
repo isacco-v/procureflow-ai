@@ -80,6 +80,8 @@ class SourceDocumentResponse(BaseModel):
     document_type: DocumentType
     document_number: str
     synthetic: bool
+    origin: Literal["synthetic_seed", "upload"]
+    upload_id: UUID | None = None
 
 
 class CaseSummaryResponse(BaseModel):
@@ -90,6 +92,7 @@ class CaseSummaryResponse(BaseModel):
     title: str
     summary: str
     synthetic: bool
+    origin: Literal["synthetic_seed", "upload"]
     supplier: SupplierResponse
     latest_reconciliation_id: UUID | None
     latest_reconciliation_status: MatchStatus | None

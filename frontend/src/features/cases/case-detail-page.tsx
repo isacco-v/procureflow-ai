@@ -30,6 +30,7 @@ import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { InvestigationPanel } from './investigation-panel'
 import { StatusBadge } from './status-badge'
 
 export function CaseDetailPage() {
@@ -81,7 +82,11 @@ export function CaseDetailPage() {
                 <h1 className='text-2xl font-bold tracking-tight'>
                   {caseQuery.data.title}
                 </h1>
-                <Badge variant='outline'>Synthetic</Badge>
+                <Badge variant='outline'>
+                  {caseQuery.data.origin === 'upload'
+                    ? 'Uploaded documents'
+                    : 'Synthetic seed'}
+                </Badge>
                 {reconciliation ? (
                   <StatusBadge status={reconciliation.status} />
                 ) : null}
@@ -175,6 +180,10 @@ export function CaseDetailPage() {
                   : undefined
               }
             />
+            <InvestigationPanel
+              caseId={caseId}
+              reconciliation={reconciliation ?? null}
+            />
           </div>
         ) : null}
       </Main>
@@ -196,7 +205,8 @@ function DocumentCard({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>
-          Structured lines entered for the demonstration.
+          Lines stored on this case. Seeded rows and accepted uploads use the
+          same tables.
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>

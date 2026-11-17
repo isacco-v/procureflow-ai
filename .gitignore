@@ -29,3 +29,6 @@ coverage/
 
 # Local toolchains downloaded only to run checks
 .tools/
+
+# Uploaded PDFs. Synthetic fixtures under backend/app/documents/fixtures stay tracked.
+var/

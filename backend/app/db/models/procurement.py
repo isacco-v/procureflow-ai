@@ -69,6 +69,12 @@ class ProcurementCase(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     synthetic: Mapped[bool] = mapped_column(nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="synthetic_seed",
+        server_default="synthetic_seed",
+    )
     supplier_id: Mapped[UUID] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
@@ -100,7 +106,13 @@ class ProcurementCase(Base):
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("ix_procurement_cases_supplier_id", "supplier_id"),)
+    __table_args__ = (
+        CheckConstraint(
+            "origin IN ('synthetic_seed', 'upload')",
+            name="ck_procurement_cases_origin",
+        ),
+        Index("ix_procurement_cases_supplier_id", "supplier_id"),
+    )
 
 
 class ProcurementDocument(Base):
@@ -114,6 +126,16 @@ class ProcurementDocument(Base):
     document_type: Mapped[str] = mapped_column(String(32), nullable=False)
     document_number: Mapped[str] = mapped_column(String(64), nullable=False)
     synthetic: Mapped[bool] = mapped_column(nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="synthetic_seed",
+        server_default="synthetic_seed",
+    )
+    upload_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("uploaded_documents.id"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
@@ -128,7 +150,12 @@ class ProcurementDocument(Base):
             name="uq_procurement_documents_case_type_number",
         ),
         _document_type_check("ck_procurement_documents_type"),
+        CheckConstraint(
+            "origin IN ('synthetic_seed', 'upload')",
+            name="ck_procurement_documents_origin",
+        ),
         Index("ix_procurement_documents_case_id", "case_id"),
+        Index("ix_procurement_documents_upload_id", "upload_id"),
     )
 
 

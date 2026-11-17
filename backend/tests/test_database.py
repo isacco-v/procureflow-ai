@@ -19,6 +19,16 @@ def test_metadata_registers_procurement_tables() -> None:
         "purchase_orders",
         "reconciliation_findings",
         "reconciliation_runs",
+        "policy_documents",
+        "policy_sections",
+        "investigations",
+        "uploaded_documents",
+        "document_pages",
+        "document_extractions",
+        "extraction_validations",
+        "investigation_citations",
+        "investigation_events",
+        "investigation_evidence",
         "suppliers",
     } <= set(Base.metadata.tables)
 
@@ -43,4 +53,4 @@ def test_engine_uses_the_configured_database_without_connecting(monkeypatch) -> 
 def test_alembic_has_a_single_baseline_head() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["20261116_0002"]
+    assert script.get_heads() == ["20261117_0006"]

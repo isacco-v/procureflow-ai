@@ -1,6 +1,6 @@
 # ProcureFlow AI frontend
 
-React, TypeScript, and Vite shell for ProcureFlow AI. The overview page calls `GET /health` on the local API. It does not upload documents or start a workflow.
+React, TypeScript, and Vite shell for ProcureFlow AI. The overview page calls `GET /health`. The documents screen uploads PDFs and shows the mock extraction. The cases screen reads stored cases and can start a mock investigation. The default configuration does not call a paid model.
 
 ## Attribution
 

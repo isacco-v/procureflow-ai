@@ -24,6 +24,7 @@ from app.domain.matching.models import DocumentType
 from app.domain.scenarios import SCENARIOS, DocumentFixture, ScenarioFixture
 from app.services.errors import SeedUnavailableError
 from app.services.identifiers import synthetic_id
+from app.services.policy_seed import ensure_policy_corpus
 
 SEED_ENVIRONMENTS = frozenset({"local", "test", "development"})
 
@@ -51,6 +52,7 @@ def seed_synthetic_cases(session: Session) -> SeedResult:
             continue
         _insert_scenario(session, scenario)
         created.append(scenario.reference)
+    ensure_policy_corpus(session)
     session.commit()
     return SeedResult(created=tuple(created), existing=tuple(existing))
 
@@ -73,6 +75,7 @@ def _insert_scenario(session: Session, scenario: ScenarioFixture) -> None:
         title=scenario.title,
         summary=scenario.summary,
         synthetic=True,
+        origin="synthetic_seed",
         supplier_id=supplier.id,
     )
     session.add(case)
@@ -85,6 +88,7 @@ def _insert_scenario(session: Session, scenario: ScenarioFixture) -> None:
             document_type=document.document_type.value,
             document_number=document.document_number,
             synthetic=True,
+            origin="synthetic_seed",
         )
         session.add(source)
         session.flush()

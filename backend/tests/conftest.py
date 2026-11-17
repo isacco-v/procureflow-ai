@@ -12,6 +12,8 @@ from app.main import create_app
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("AI_MODE", "mock")
+    monkeypatch.setenv("INVESTIGATION_LIVE_ENABLED", "false")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
     monkeypatch.setenv(
         "DATABASE_URL",

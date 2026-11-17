@@ -16,7 +16,9 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
+import { Route as AuthenticatedDocumentsIndexRouteImport } from './routes/_authenticated/documents/index'
 import { Route as AuthenticatedCasesIndexRouteImport } from './routes/_authenticated/cases/index'
+import { Route as AuthenticatedDocumentsDocumentIdRouteImport } from './routes/_authenticated/documents/$documentId'
 import { Route as AuthenticatedCasesCaseIdRouteImport } from './routes/_authenticated/cases/$caseId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -53,11 +55,23 @@ const errors401Route = errors401RouteImport.update({
   path: '/401',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedDocumentsIndexRoute =
+  AuthenticatedDocumentsIndexRouteImport.update({
+    id: '/documents/',
+    path: '/documents/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCasesIndexRoute = AuthenticatedCasesIndexRouteImport.update({
   id: '/cases/',
   path: '/cases/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDocumentsDocumentIdRoute =
+  AuthenticatedDocumentsDocumentIdRouteImport.update({
+    id: '/documents/$documentId',
+    path: '/documents/$documentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCasesCaseIdRoute =
   AuthenticatedCasesCaseIdRouteImport.update({
     id: '/cases/$caseId',
@@ -73,7 +87,9 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/cases/': typeof AuthenticatedCasesIndexRoute
+  '/documents/': typeof AuthenticatedDocumentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/401': typeof errors401Route
@@ -83,7 +99,9 @@ export interface FileRoutesByTo {
   '/503': typeof errors503Route
   '/': typeof AuthenticatedIndexRoute
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/cases': typeof AuthenticatedCasesIndexRoute
+  '/documents': typeof AuthenticatedDocumentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,7 +113,9 @@ export interface FileRoutesById {
   '/(errors)/503': typeof errors503Route
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
+  '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/_authenticated/cases/': typeof AuthenticatedCasesIndexRoute
+  '/_authenticated/documents/': typeof AuthenticatedDocumentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,7 +127,9 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/cases/$caseId'
+    | '/documents/$documentId'
     | '/cases/'
+    | '/documents/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/401'
@@ -117,7 +139,9 @@ export interface FileRouteTypes {
     | '/503'
     | '/'
     | '/cases/$caseId'
+    | '/documents/$documentId'
     | '/cases'
+    | '/documents'
   id:
     | '__root__'
     | '/_authenticated'
@@ -128,7 +152,9 @@ export interface FileRouteTypes {
     | '/(errors)/503'
     | '/_authenticated/'
     | '/_authenticated/cases/$caseId'
+    | '/_authenticated/documents/$documentId'
     | '/_authenticated/cases/'
+    | '/_authenticated/documents/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -191,11 +217,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof errors401RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/documents/': {
+      id: '/_authenticated/documents/'
+      path: '/documents'
+      fullPath: '/documents/'
+      preLoaderRoute: typeof AuthenticatedDocumentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/cases/': {
       id: '/_authenticated/cases/'
       path: '/cases'
       fullPath: '/cases/'
       preLoaderRoute: typeof AuthenticatedCasesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/documents/$documentId': {
+      id: '/_authenticated/documents/$documentId'
+      path: '/documents/$documentId'
+      fullPath: '/documents/$documentId'
+      preLoaderRoute: typeof AuthenticatedDocumentsDocumentIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/cases/$caseId': {
@@ -211,13 +251,17 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedCasesCaseIdRoute: typeof AuthenticatedCasesCaseIdRoute
+  AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
   AuthenticatedCasesIndexRoute: typeof AuthenticatedCasesIndexRoute
+  AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedCasesCaseIdRoute: AuthenticatedCasesCaseIdRoute,
+  AuthenticatedDocumentsDocumentIdRoute: AuthenticatedDocumentsDocumentIdRoute,
   AuthenticatedCasesIndexRoute: AuthenticatedCasesIndexRoute,
+  AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

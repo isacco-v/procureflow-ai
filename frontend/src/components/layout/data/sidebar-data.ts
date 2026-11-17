@@ -1,4 +1,4 @@
-import { ClipboardList, LayoutDashboard } from 'lucide-react'
+import { ClipboardList, FileText, LayoutDashboard } from 'lucide-react'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
@@ -15,6 +15,11 @@ export const sidebarData: SidebarData = {
           title: 'Cases',
           url: '/cases',
           icon: ClipboardList,
+        },
+        {
+          title: 'Documents',
+          url: '/documents',
+          icon: FileText,
         },
       ],
     },

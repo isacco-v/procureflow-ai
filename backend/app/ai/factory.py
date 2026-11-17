@@ -4,13 +4,17 @@ from app.core.config import Settings
 
 
 def build_ai_provider(settings: Settings) -> AIProvider:
-    """Select the provider. The OpenAI branch refuses before any client exists."""
+    """Select the completion provider.
+
+    This factory never constructs an OpenAI client. Live investigation calls
+    use ``build_investigation_model`` and stay off unless the server-side live
+    gate is open.
+    """
 
     if settings.ai_mode == "mock":
         return MockAIProvider()
 
     raise RealProviderDisabledError(
-        "AI_MODE=openai is reserved for a later iteration. "
-        "The OpenAI client is not installed and no request is sent. "
+        "The completion provider does not call OpenAI. No completion request is sent. "
         "Set AI_MODE=mock."
     )

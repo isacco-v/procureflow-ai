@@ -1,0 +1,456 @@
+{
+  "dataset": "procureflow-synthetic-documents",
+  "version": 1,
+  "description": "Fictional construction purchase orders, delivery notes, and invoices generated from the five ProcureFlow scenarios. Not customer data. Extractors must read page text. File names and content hashes are catalog metadata only.",
+  "language_model_measured": false,
+  "documents": [
+    {
+      "file_name": "works_order-po-a-100.pdf",
+      "layout": "works_order",
+      "scenario_reference": "CASE-A-CLEAN",
+      "content_sha256": "65fe9853c8c21730b1d91dffa3c16fd867ce155b7a0d1671a25182e0214649b7",
+      "document_type": "purchase_order",
+      "document_number": "PO-A-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-A-100",
+      "document_date": "2026-03-02",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "goods_received-dn-a-100.pdf",
+      "layout": "goods_received",
+      "scenario_reference": "CASE-A-CLEAN",
+      "content_sha256": "0cf905002d559d646ffbe2454aa075be09296ddd922d352fc71f36e5914f832b",
+      "document_type": "delivery_note",
+      "document_number": "DN-A-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-A-100",
+      "document_date": "2026-03-05",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "tax_invoice-inv-a-100.pdf",
+      "layout": "tax_invoice",
+      "scenario_reference": "CASE-A-CLEAN",
+      "content_sha256": "e1df114fce969e50d9cd4311084bde7f9a52cbbee1536e147257bfd39542dae0",
+      "document_type": "invoice",
+      "document_number": "INV-A-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-A-100",
+      "document_date": "2026-03-07",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": "21",
+      "tax_amount": "94.5",
+      "amount_due": "544.5",
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "works_order-po-b-100.pdf",
+      "layout": "works_order",
+      "scenario_reference": "CASE-B-QUANTITY",
+      "content_sha256": "61e0d51bc8da5e8924996d08b2594e8308bafebac61e0f5478b20c2e3a8ae9cc",
+      "document_type": "purchase_order",
+      "document_number": "PO-B-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-B-100",
+      "document_date": "2026-03-02",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "goods_received-dn-b-100.pdf",
+      "layout": "goods_received",
+      "scenario_reference": "CASE-B-QUANTITY",
+      "content_sha256": "9f362eafdcc7675a9f36d16886978e582b1842c346bfea25c2181940c2a80aea",
+      "document_type": "delivery_note",
+      "document_number": "DN-B-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-B-100",
+      "document_date": "2026-03-05",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "80",
+          "unit": "BAG",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "tax_invoice-inv-b-100.pdf",
+      "layout": "tax_invoice",
+      "scenario_reference": "CASE-B-QUANTITY",
+      "content_sha256": "eee328fd61d73f422b37751d997a8bd2a2d929e4695bce8d0f472cef3c5db537",
+      "document_type": "invoice",
+      "document_number": "INV-B-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-B-100",
+      "document_date": "2026-03-07",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": "21",
+      "tax_amount": "94.5",
+      "amount_due": "544.5",
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "CEM-II-25",
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "works_order-po-c-100.pdf",
+      "layout": "works_order",
+      "scenario_reference": "CASE-C-AMBIGUOUS",
+      "content_sha256": "a6d449c10e07a213ddc3db5f8c4d4ed39be2c8e88a2c0db204424fc35465dae3",
+      "document_type": "purchase_order",
+      "document_number": "PO-C-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-C-100",
+      "document_date": "2026-04-01",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": null,
+          "description": "Portland Cement CEM II 25kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "goods_received-dn-c-100.pdf",
+      "layout": "goods_received",
+      "scenario_reference": "CASE-C-AMBIGUOUS",
+      "content_sha256": "ba92ba9b08b7effe4eb218783786b7beb0a8bb2d4f721b49e541608be72c40e5",
+      "document_type": "delivery_note",
+      "document_number": "DN-C-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-C-100",
+      "document_date": "2026-04-04",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": null,
+          "description": "Cement bags 25 kg",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "tax_invoice-inv-c-100.pdf",
+      "layout": "tax_invoice",
+      "scenario_reference": "CASE-C-AMBIGUOUS",
+      "content_sha256": "7add96a396ebbd6751f40170ba7a9514157a1bcc58499d4c7a46be27a507d1d3",
+      "document_type": "invoice",
+      "document_number": "INV-C-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-C-100",
+      "document_date": "2026-04-06",
+      "currency": "EUR",
+      "net_amount": "450",
+      "tax_rate_percent": "21",
+      "tax_amount": "94.5",
+      "amount_due": "544.5",
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": null,
+          "description": "CEM II/A-LL 25KG",
+          "quantity": "100",
+          "unit": "BAG",
+          "unit_price": "4.5",
+          "line_total": "450"
+        }
+      ]
+    },
+    {
+      "file_name": "works_order-po-d-100.pdf",
+      "layout": "works_order",
+      "scenario_reference": "CASE-D-PARTIAL",
+      "content_sha256": "799a95a27215b16df43da360520ae6d17bb87af8c135469f0533582e1b96c4f3",
+      "document_type": "purchase_order",
+      "document_number": "PO-D-100",
+      "supplier_name": "North Quarry Aggregates",
+      "supplier_code": "SUP-NORTH-QUARRY",
+      "purchase_order_number": "PO-D-100",
+      "document_date": "2026-05-04",
+      "currency": "EUR",
+      "net_amount": "2875",
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "AGG-20MM",
+          "description": "20mm crushed aggregate",
+          "quantity": "100",
+          "unit": "TONNE",
+          "unit_price": "28.75",
+          "line_total": "2875"
+        }
+      ]
+    },
+    {
+      "file_name": "goods_received-dn-d-080.pdf",
+      "layout": "goods_received",
+      "scenario_reference": "CASE-D-PARTIAL",
+      "content_sha256": "700a292cebb37a5a9286c0bfef82f5ae909c112f7acd52df652f00f009cfb07d",
+      "document_type": "delivery_note",
+      "document_number": "DN-D-080",
+      "supplier_name": "North Quarry Aggregates",
+      "supplier_code": "SUP-NORTH-QUARRY",
+      "purchase_order_number": "PO-D-100",
+      "document_date": "2026-05-08",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "AGG-20MM",
+          "description": "20mm crushed aggregate",
+          "quantity": "80",
+          "unit": "TONNE",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "delivery_ticket-dn-d-020.pdf",
+      "layout": "delivery_ticket",
+      "scenario_reference": "CASE-D-PARTIAL",
+      "content_sha256": "c09b99b8a98a79c268c4882d3a694162f00668abc0d091c347f69e572690e496",
+      "document_type": "delivery_note",
+      "document_number": "DN-D-020",
+      "supplier_name": "North Quarry Aggregates",
+      "supplier_code": "SUP-NORTH-QUARRY",
+      "purchase_order_number": "PO-D-100",
+      "document_date": "2026-05-12",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "AGG-20MM",
+          "description": "20mm crushed aggregate",
+          "quantity": "20",
+          "unit": "TONNE",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "tax_invoice-inv-d-100.pdf",
+      "layout": "tax_invoice",
+      "scenario_reference": "CASE-D-PARTIAL",
+      "content_sha256": "9f5c77a15779c7cafc35b83039b7e6dd1453c4c746f8bdeb5e655763958bb822",
+      "document_type": "invoice",
+      "document_number": "INV-D-100",
+      "supplier_name": "North Quarry Aggregates",
+      "supplier_code": "SUP-NORTH-QUARRY",
+      "purchase_order_number": "PO-D-100",
+      "document_date": "2026-05-14",
+      "currency": "EUR",
+      "net_amount": "2875",
+      "tax_rate_percent": "21",
+      "tax_amount": "603.75",
+      "amount_due": "3478.75",
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "AGG-20MM",
+          "description": "20mm crushed aggregate",
+          "quantity": "100",
+          "unit": "TONNE",
+          "unit_price": "28.75",
+          "line_total": "2875"
+        }
+      ]
+    },
+    {
+      "file_name": "works_order-po-e-100.pdf",
+      "layout": "works_order",
+      "scenario_reference": "CASE-E-PRICE",
+      "content_sha256": "12831dbf27c79408ac93ed401d8a5f4fa9c025deff8af5d33576d69c1d1f4f9e",
+      "document_type": "purchase_order",
+      "document_number": "PO-E-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-E-100",
+      "document_date": "2026-06-01",
+      "currency": "EUR",
+      "net_amount": "500",
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "TIM-C24-48",
+          "description": "C24 structural timber 4.8m",
+          "quantity": "40",
+          "unit": "EACH",
+          "unit_price": "12.5",
+          "line_total": "500"
+        }
+      ]
+    },
+    {
+      "file_name": "goods_received-dn-e-100.pdf",
+      "layout": "goods_received",
+      "scenario_reference": "CASE-E-PRICE",
+      "content_sha256": "4fe017b8bb2680f0b0b2c93f80f09fd0a1adf5c748a7ba36a0d6ee9eac46e3a8",
+      "document_type": "delivery_note",
+      "document_number": "DN-E-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-E-100",
+      "document_date": "2026-06-04",
+      "currency": null,
+      "net_amount": null,
+      "tax_rate_percent": null,
+      "tax_amount": null,
+      "amount_due": null,
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "TIM-C24-48",
+          "description": "C24 structural timber 4.8m",
+          "quantity": "40",
+          "unit": "EACH",
+          "unit_price": null,
+          "line_total": null
+        }
+      ]
+    },
+    {
+      "file_name": "tax_invoice-inv-e-100.pdf",
+      "layout": "tax_invoice",
+      "scenario_reference": "CASE-E-PRICE",
+      "content_sha256": "c4843752849684acbf4ca8833924d8b3661e2eb60e3d45cf84fcd0bd6a053437",
+      "document_type": "invoice",
+      "document_number": "INV-E-100",
+      "supplier_name": "Helios Building Supplies",
+      "supplier_code": "SUP-HELIOS",
+      "purchase_order_number": "PO-E-100",
+      "document_date": "2026-06-06",
+      "currency": "EUR",
+      "net_amount": "550",
+      "tax_rate_percent": "21",
+      "tax_amount": "115.5",
+      "amount_due": "665.5",
+      "lines": [
+        {
+          "line_number": 1,
+          "product_code": "TIM-C24-48",
+          "description": "C24 structural timber 4.8m",
+          "quantity": "40",
+          "unit": "EACH",
+          "unit_price": "13.75",
+          "line_total": "550"
+        }
+      ]
+    }
+  ]
+}

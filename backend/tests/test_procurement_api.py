@@ -5,6 +5,7 @@ is reachable, migrates it, and skips when it is not.
 """
 
 import os
+import tempfile
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -36,6 +37,15 @@ _TEST_DATABASE = "procureflow_test"
 _DEFAULT_URL = "postgresql+psycopg://procureflow:procureflow@127.0.0.1:5432/procureflow"
 _TRUNCATE = """
 TRUNCATE TABLE
+    extraction_validations,
+    document_extractions,
+    document_pages,
+    investigation_citations,
+    investigation_evidence,
+    investigation_events,
+    investigations,
+    policy_sections,
+    policy_documents,
     reconciliation_findings,
     reconciliation_runs,
     invoice_lines,
@@ -45,6 +55,7 @@ TRUNCATE TABLE
     purchase_order_lines,
     purchase_orders,
     procurement_documents,
+    uploaded_documents,
     procurement_cases,
     suppliers
 RESTART IDENTITY CASCADE
@@ -113,8 +124,13 @@ def postgres_client(
     monkeypatch.setenv("DATABASE_URL", migrated_database)
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("AI_MODE", "mock")
+    monkeypatch.setenv("INVESTIGATION_LIVE_ENABLED", "false")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("DOCUMENT_EXTRACTOR", "mock")
+    monkeypatch.setenv("EXTRACTION_LIVE_ENABLED", "false")
+    monkeypatch.setenv("DOCUMENT_STORAGE_DIR", tempfile.mkdtemp(prefix="procureflow-docs-"))
     get_settings.cache_clear()
     dispose_db()
     _truncate()
@@ -160,8 +176,11 @@ def test_domain_migration_round_trip_and_quantity_constraint(migrated_database: 
                     text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
                 ).scalars()
             )
-        assert version == "20261116_0002"
+        assert version == "20261117_0006"
         assert "reconciliation_findings" in tables
+        assert "investigations" in tables
+        assert "uploaded_documents" in tables
+        assert "policy_sections" in tables
         _reject_non_positive_quantity(engine)
     finally:
         command.upgrade(config, "head")

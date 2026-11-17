@@ -34,13 +34,20 @@ export function OverviewPage() {
         <div className='mb-6 space-y-1'>
           <h1 className='text-2xl font-bold tracking-tight'>ProcureFlow AI</h1>
           <p className='max-w-2xl text-muted-foreground'>
-            Procurement cases can be reconciled from stored purchase orders,
-            delivery notes, and invoices.{' '}
+            Upload PDFs on the documents screen, or open the seeded cases.
+            Reconciliation stays deterministic.{' '}
+            <Link
+              to='/documents'
+              className='font-medium text-foreground underline-offset-4 hover:underline'
+            >
+              Upload documents
+            </Link>{' '}
+            or{' '}
             <Link
               to='/cases'
               className='font-medium text-foreground underline-offset-4 hover:underline'
             >
-              Open procurement cases
+              open procurement cases
             </Link>
             .
           </p>
@@ -94,7 +101,8 @@ export function OverviewPage() {
             <CardHeader>
               <CardTitle>This version</CardTitle>
               <CardDescription>
-                The screen reads the health check and links to synthetic cases.
+                The screen reads the health check and links to documents and
+                cases.
               </CardDescription>
             </CardHeader>
             <CardContent className='space-y-4 text-sm'>
@@ -105,13 +113,19 @@ export function OverviewPage() {
                   <li>Backend liveness check</li>
                   <li>Mock AI mode, with no paid request</li>
                   <li>Synthetic cases and deterministic three-way matching</li>
+                  <li>
+                    PDF upload with mock extraction. OCR is not implemented
+                  </li>
+                  <li>
+                    Mock investigation of exceptions. Live model calls stay off
+                  </li>
                 </ul>
               </div>
               <div>
-                <h2 className='font-medium'>Later iterations</h2>
+                <h2 className='font-medium'>Not in this version</h2>
                 <ul className='mt-1 list-disc space-y-1 ps-5 text-muted-foreground'>
-                  <li>Document intake and structured extraction</li>
-                  <li>Bounded investigation with human review</li>
+                  <li>A recorded human approval decision</li>
+                  <li>OCR or a vision model for image-only PDFs</li>
                 </ul>
               </div>
             </CardContent>

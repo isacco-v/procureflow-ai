@@ -1,0 +1,30 @@
+Live LLM experiment report.
+This is not a mock-test result.
+Estimated USD is an application price-table safeguard, not a provider invoice and not a guaranteed billing cap.
+Test identifier: PF-LIVE-EXTRACT-PO-B
+Model and configuration: gpt-5.4-mini; AI_MODE=openai; DOCUMENT_EXTRACTOR=openai; EXTRACTION_LIVE_ENABLED=true; INVESTIGATION_LIVE_ENABLED=false; OPENAI_MODEL=gpt-5.4-mini; max_retries=0; store=false; extraction budget safeguard 0.05 USD; price table input 0.75 and output 4.50 USD per million; process override of the file model gpt-4.1-mini
+Input document or case: works_order-po-b-100.pdf (CASE-B-QUANTITY purchase order PO-B-100). Not accepted.
+Expected result: purchase_order PO-B-100; supplier SUP-HELIOS; date 2026-03-02; currency EUR; net 450; line CEM-II-25 quantity 100 unit BAG unit price 4.5 line total 450; tax fields null; needs_review; mocked false
+Actual result: status=needs_review; extractor=openai; mocked=False; reasoning_kind=language_model; duplicate=False; accepted_case_id=None; correct: document_type=purchase_order; document_number=PO-B-100; supplier_name=Helios Building Supplies; supplier_code=SUP-HELIOS; purchase_order_number=PO-B-100; document_date=2026-03-02; currency=EUR; net_amount=450.00; tax_rate_percent=None; tax_amount=None; amount_due=None; line 1 product_code=CEM-II-25; line 1 description=Portland Cement CEM II 25kg; line 1 quantity=100; line 1 unit=BAG; line 1 unit_price=4.50; line 1 line_total=450.00; incorrect: none; missing: none; hallucinated: none
+Schema validation: passed; server validation status=ready; blocking=False; assess_live_extraction=pass
+Retrieved evidence: document_type@p1:WORKS ORDER; document_number@p1:Works order number: PO-B-100; supplier_name@p1:Supplier name: Helios Building Supplies; supplier_code@p1:Supplier account: SUP-HELIOS; purchase_order_number@p1:Works order number: PO-B-100; document_date@p1:Order date: 2026-03-02; currency@p1:Currency code: EUR; lines@p1:Line 1; lines@p1:Product code: CEM-II-25; lines@p1:Description: Portland Cement CEM II 25kg; lines@p1:Quantity: 100; lines@p1:Unit of measure: BAG; lines@p1:Unit price: 4.50; lines@p1:Line amount: 450.00; net_amount@p1:Net amount: 450.00
+Agent tools invoked: none. Document extraction does not invoke investigation tools.
+Tokens consumed: input 818, output 470
+Estimated USD cost: 0.002728
+Duration: 6.183 seconds
+Errors: none
+Overall evaluation: pass
+
+Field comparison, separated from the mock extraction score.
+Correct fields: document_type=purchase_order; document_number=PO-B-100; supplier_name=Helios Building Supplies; supplier_code=SUP-HELIOS; purchase_order_number=PO-B-100; document_date=2026-03-02; currency=EUR; net_amount=450.00; tax_rate_percent=None; tax_amount=None; amount_due=None; line 1 product_code=CEM-II-25; line 1 description=Portland Cement CEM II 25kg; line 1 quantity=100; line 1 unit=BAG; line 1 unit_price=4.50; line 1 line_total=450.00
+Incorrect fields: none
+Missing values: none
+Hallucinated values: none
+Decimal strings 450.00, 4.50, and 450.00 match catalog values 450, 4.5, and 450. They are not incorrect fields.
+Uncertainties: Document is labeled 'WORKS ORDER' and 'Buyer copy for construction materials'; interpreted as purchase_order.; Tax and amount due are explicitly not stated.
+Validation warnings: none
+Prompt-injection flags: none
+Score fields: 17/17
+The document was not accepted into a procurement case.
+No investigation was run.
+Cleanup: the extraction process has exited. AI_MODE=mock. EXTRACTION_LIVE_ENABLED and INVESTIGATION_LIVE_ENABLED are false. No API server is listening.

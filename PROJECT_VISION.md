@@ -1,7 +1,7 @@
 # ProcureFlow AI — Project Vision
 
 **Status:** target product vision, written 2026-11-16.  
-**Repository state:** initial foundation only. This document describes the system we intend to build. It is not a description of behavior that already exists, and it is not evidence of production use, reliability, or measured performance.
+**Repository state:** matcher, cases, lexical policy retrieval, a mock investigation, a disabled OpenAI investigation adapter, and a document pipeline whose default extractor is a deterministic test double. Mock and live results can be stored separately. A live model call, OCR, semantic retrieval, and a recorded approval decision are not done. Neither adapter has been turned on. This is not evidence of production use, reliability, or measured language-model performance.
 
 ProcureFlow AI is a personal, open-source portfolio project. It is designed to be defended in a senior engineering review: each capability should exist because a procurement team needs it, and each important behavior should be testable.
 
@@ -71,12 +71,12 @@ This is the target journey. Synthetic cases and deterministic matching are imple
 
 | Capability | Why it exists | Status |
 | --- | --- | --- |
-| Case and document intake | Reviewers work by case, not by loose files | Partial: synthetic cases and source-document rows. Upload is not implemented |
-| Typed extraction with evidence | Reviewers must see what was read and what was not | Planned |
-| Normalization | Documents do not share a layout or a vocabulary | Planned |
+| Case and document intake | Reviewers work by case, not by loose files | PDF upload, storage, and explicit acceptance. Seeded cases stay separate |
+| Typed extraction with evidence | Reviewers must see what was read and what was not | Mock extractor on synthetic PDFs, with page snippets. The OpenAI extractor is implemented and disabled. OCR is not implemented |
+| Normalization | Documents do not share a layout or a vocabulary | Implemented for accepted mock extractions: dates, currency, units, and Decimal checks. Uncertain values stay unaccepted |
 | Deterministic three-way match | Financial differences must be reproducible | Implemented for stored lines |
-| Exception investigation | Some differences need context a rule cannot see | Planned |
-| Policy retrieval with citations | A recommendation should point at the rule it used | Planned |
+| Exception investigation | Some differences need context a rule cannot see | LangGraph workflow. The default decision step is a deterministic test double. An OpenAI tool-calling adapter exists and is gated off |
+| Policy retrieval with citations | A recommendation should point at the rule it used | Implemented with PostgreSQL full-text search over six synthetic policies. Semantic retrieval is not implemented |
 | Human review and audit | Payment-related decisions need a person and a trace | Planned |
 | Simulated ERP handoff | Shows the boundary without a live ERP | Planned |
 | Health check, configuration, mock model provider | Makes the foundation runnable and safe to demo | Implemented |
@@ -87,7 +87,7 @@ These apply to the target system. Where this repository does not meet them yet, 
 
 - **Correctness of money and quantity.** Decimal arithmetic, explicit tolerances, and tests that do not involve a model.
 - **Traceability.** Document status, match results, tool calls, and review decisions are stored as records a reviewer can open later.
-- **Idempotency.** Processing the same document again does not create a second financial result.
+- **Idempotency.** Processing the same document with the same extractor does not create a second financial result. A different extractor does not replace the stored result or the seeded case.
 - **Bounded model use.** Tool calls, steps, tokens, and estimated cost have limits. Crossing a limit stops the run.
 - **Failure behavior.** Tool errors, timeouts, and invalid model output become visible states, not a guessed answer.
 - **Security.** Secrets stay in the environment. Uploaded documents are untrusted. The browser never receives a model API key.
@@ -112,7 +112,7 @@ Each item below is justified by the procurement workflow. None of them is a reas
 
 ## Demonstration scenarios
 
-The dataset is synthetic. Five structured scenarios live in `backend/app/domain/scenarios.py` and can be seeded into PostgreSQL. They do not yet have PDF files.
+The dataset is synthetic. Five structured scenarios live in `backend/app/domain/scenarios.py` and can be seeded into PostgreSQL. The same scenarios also have generated PDFs and a ground-truth JSON catalog under `backend/app/documents/fixtures`. Those files are fictional. The mock extractor is scored against that catalog. That score is not a language-model measurement.
 
 ### Scenario A — successful reconciliation
 
@@ -154,15 +154,15 @@ The minimum product that demonstrates the idea is one vertical slice:
 - A review screen that shows the discrepancy and does not offer a pay action.
 - Mock model responses only.
 
-Extraction, retrieval, and the investigation agent are the next slices. They are not required to prove that the matcher is deterministic.
+A live investigation model and a live document extractor are the next slices that would spend money. Lexical policy search, the scripted investigation, and the mock document extractor already exist. They are not a language model and they are not semantic retrieval.
 
 ## Planned advanced capabilities
 
-- PDF intake, with a later path for scans and OCR.
-- Structured extraction that records page and source text.
+- OCR or a vision model for image-only PDFs. Text PDFs can already be uploaded, parsed, and accepted through the mock extractor.
+- A live structured extraction against the Responses API. The adapter, schema, and separate budget exist and stay off.
 - Semantic candidate matching that stays distinct from accepted matches.
-- Policy retrieval with PostgreSQL and pgvector, plus lexical lookup for identifiers and amounts.
-- A LangGraph investigation with read-only tools, step and cost limits, and human escalation.
+- Policy retrieval with pgvector. Lexical full-text search and citations already exist. Semantic retrieval does not.
+- A live model behind the existing LangGraph investigation. The workflow, read-only tools, step and cost limits, and human-review handoff exist. The current selector is a test double.
 - Background processing for long jobs, with explicit job states and retries.
 - A simulated outbound integration.
 - Deployment of the static frontend and a separately hosted API. Render and Supabase are options to evaluate, not services that have been provisioned.
@@ -192,11 +192,11 @@ Domain model, migrations, deterministic matcher, scenarios A–E as structured f
 
 Exit criteria met for the matcher: the tests fail if a quantity or price discrepancy is missed or invented, and the same input yields the same report. A person still cannot record an approval. That remains later work.
 
-### 3. Advanced agentic capabilities
+### 3. Advanced agentic capabilities — investigation slice is in place
 
-Extraction, normalization, retrieval, and a bounded investigation agent. Real model calls stay behind the provider switch and a budget. Scenario C becomes an evaluation case.
+The investigation records the tools it called and the policy sections it cited. A tool, iteration, model-request, timeout, or estimated-cost limit ends the run with an explicit status and no payment. The tools cannot approve an invoice. The default decision step is a deterministic test double. An OpenAI adapter can select tools from the Responses API, validate a structured outcome, and stop before a request that would exceed the estimate. That adapter is not enabled, and no live call has been made. Semantic retrieval remains in this phase.
 
-Exit criteria: an investigation records the tools it called and the policy passages it used. A budget or tool-limit breach ends the run with an explicit status. The agent has no tool that approves payment.
+A mock document pipeline now records page text, source snippets, validation, and an explicit accept step before records are written. Exit criteria still open: a live model-selected tool path against the real API, a live extraction against the real API, OCR for image-only PDFs, and scenario C used as an evaluation of a live model rather than of the test double or a fake transport.
 
 ### 4. Public demonstration and deployment
 
@@ -223,8 +223,8 @@ These are targets for later iterations. They are not measurements.
 - **Semantic overconfidence.** Similar descriptions are not proof of the same product. The design treats semantic matches as candidates. The risk remains if a later change promotes them automatically.
 - **Extraction error.** A wrong quantity in the structured record becomes a wrong match. Evidence references and human review are the mitigation, not a higher model temperature.
 - **Policy retrieval error.** A retrieved chunk can be irrelevant or contradicted by another chunk. The agent must be able to return uncertainty.
-- **Prompt injection.** Document text is untrusted and may contain instructions. Tools must validate arguments and must not follow instructions found in a PDF.
-- **Cost.** A public endpoint in live mode would spend money. The default is mock, and live mode is not implemented.
+- **Prompt injection.** Document and policy text is untrusted. The tools flag instruction-like phrases. The live adapter keeps a fixed tool list, treats retrieved text as data, and rejects citations that were not retrieved. Those checks are not a guarantee, and they have been tried against a fake model, not a live one.
+- **Cost.** A public endpoint in live mode would spend money. The default is mock. The live adapter refuses to run unless the mode, the live flag, and a server-side key are all set. The `$0.10` investigation budget and the `$0.05` extraction budget are estimated safeguards, not guaranteed provider billing caps. Live mode has not been turned on.
 - **Scope.** A full ERP integration, OCR for arbitrary scans, and multi-company permissions are easy to overbuild. They stay planned until the match and review loop works.
 - **Portfolio context.** There are no production users and no incident history. Operational claims have to wait for evidence.
 

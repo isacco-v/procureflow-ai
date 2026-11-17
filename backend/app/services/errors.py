@@ -14,6 +14,21 @@ class NotFoundError(ProcurementError):
         super().__init__(code, detail, 404)
 
 
+class ConflictError(ProcurementError):
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(code, detail, 409)
+
+
+class ForbiddenError(ProcurementError):
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(code, detail, 403)
+
+
+class UnavailableError(ProcurementError):
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(code, detail, 503)
+
+
 class SeedUnavailableError(ProcurementError):
     def __init__(self) -> None:
         super().__init__(

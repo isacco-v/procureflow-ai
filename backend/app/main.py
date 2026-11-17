@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
+from app.api.routes.documents import router as document_router
 from app.api.routes.health import router as health_router
+from app.api.routes.investigations import router as investigation_router
 from app.api.routes.procurement import router as procurement_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -39,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=__version__,
-        summary="Procurement cases and deterministic three-way reconciliation.",
+        summary="Procurement documents, reconciliation, and read-only exception investigation.",
     )
     app.add_middleware(
         CORSMiddleware,
@@ -91,6 +93,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(procurement_router)
+    app.include_router(document_router)
+    app.include_router(investigation_router)
     return app
 
 
