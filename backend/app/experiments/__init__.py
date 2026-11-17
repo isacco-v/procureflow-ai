@@ -141,6 +141,7 @@ def render_procedure(procedure: ExperimentProcedure, problems: list[str]) -> str
         f"Investigation budget safeguard USD: {procedure.investigation_budget_usd}",
         f"Purchase order file: {procedure.purchase_order_file}",
         "Pass, fail, evidence, and report fields are in docs/LIVE_EXPERIMENT.md.",
+        "Mock Scenario B demonstration, not a live test: python -m app.demo.",
         "",
         procedure.commands,
         "",

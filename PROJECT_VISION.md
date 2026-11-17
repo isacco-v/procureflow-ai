@@ -1,7 +1,7 @@
 # ProcureFlow AI — Project Vision
 
 **Status:** target product vision, written 2026-11-16.  
-**Repository state:** matcher, cases, lexical policy retrieval, a mock investigation, a disabled OpenAI investigation adapter, and a document pipeline whose default extractor is a deterministic test double. Mock and live results can be stored separately. A live model call, OCR, semantic retrieval, and a recorded approval decision are not done. Neither adapter has been turned on. This is not evidence of production use, reliability, or measured language-model performance.
+**Repository state:** matcher, cases, lexical policy retrieval, PDF intake, a mock extractor, a mock investigation, and gated OpenAI adapters. One live extraction and four live investigation attempts were recorded against the synthetic quantity case. The passing attempt is PF-LIVE-INVESTIGATE-CASE-B-V4. Live mode is off again. OCR, semantic retrieval, and a recorded approval decision are not done. This is not evidence of production use.
 
 ProcureFlow AI is a personal, open-source portfolio project. It is designed to be defended in a senior engineering review: each capability should exist because a procurement team needs it, and each important behavior should be testable.
 
@@ -56,7 +56,7 @@ The value is a reviewable recommendation, not an automatic payment.
 
 ## End-to-end user journey
 
-This is the target journey. Synthetic cases and deterministic matching are implemented. Upload, extraction, investigation, and a recorded human decision are not. The overview still reads `GET /health`.
+This is the target journey. Synthetic cases, PDF upload, mock extraction, deterministic matching, and mock investigation are implemented. A recorded human approval decision is not. The overview reads `GET /health` and reports the configured AI mode.
 
 1. The reviewer creates or opens a procurement case and uploads PDFs.
 2. The system checks file type, size, and basic integrity, stores metadata, and marks the document as received.
@@ -194,7 +194,7 @@ Exit criteria met for the matcher: the tests fail if a quantity or price discrep
 
 ### 3. Advanced agentic capabilities — investigation slice is in place
 
-The investigation records the tools it called and the policy sections it cited. A tool, iteration, model-request, timeout, or estimated-cost limit ends the run with an explicit status and no payment. The tools cannot approve an invoice. The default decision step is a deterministic test double. An OpenAI adapter can select tools from the Responses API, validate a structured outcome, and stop before a request that would exceed the estimate. That adapter is not enabled, and no live call has been made. Semantic retrieval remains in this phase.
+The investigation records the tools it called and the policy sections it cited. A tool, iteration, model-request, timeout, or estimated-cost limit ends the run with an explicit status and no payment. The tools cannot approve an invoice. The default decision step is a deterministic test double. An OpenAI adapter can select tools from the Responses API, validate a structured outcome, and stop before a request that would exceed the estimate. That adapter is gated off. It was enabled for the recorded CASE-B attempts, including the passing V4 run, and the flag is false again. Semantic retrieval remains in this phase.
 
 A mock document pipeline now records page text, source snippets, validation, and an explicit accept step before records are written. Exit criteria still open: a live model-selected tool path against the real API, a live extraction against the real API, OCR for image-only PDFs, and scenario C used as an evaluation of a live model rather than of the test double or a fake transport.
 
@@ -224,7 +224,7 @@ These are targets for later iterations. They are not measurements.
 - **Extraction error.** A wrong quantity in the structured record becomes a wrong match. Evidence references and human review are the mitigation, not a higher model temperature.
 - **Policy retrieval error.** A retrieved chunk can be irrelevant or contradicted by another chunk. The agent must be able to return uncertainty.
 - **Prompt injection.** Document and policy text is untrusted. The tools flag instruction-like phrases. The live adapter keeps a fixed tool list, treats retrieved text as data, and rejects citations that were not retrieved. Those checks are not a guarantee, and they have been tried against a fake model, not a live one.
-- **Cost.** A public endpoint in live mode would spend money. The default is mock. The live adapter refuses to run unless the mode, the live flag, and a server-side key are all set. The `$0.10` investigation budget and the `$0.05` extraction budget are estimated safeguards, not guaranteed provider billing caps. Live mode has not been turned on.
+- **Cost.** A public endpoint in live mode would spend money. The default is mock. The live adapter refuses to run unless the mode, the live flag, and a server-side key are all set. The `$0.10` investigation budget and the `$0.05` extraction budget are estimated safeguards, not guaranteed provider billing caps. Live mode is off. It was turned on only for the recorded experiments.
 - **Scope.** A full ERP integration, OCR for arbitrary scans, and multi-company permissions are easy to overbuild. They stay planned until the match and review loop works.
 - **Portfolio context.** There are no production users and no incident history. Operational claims have to wait for evidence.
 

@@ -65,7 +65,9 @@ export function DocumentsPage() {
             <CardDescription>
               PDF files only. The default reader is a mock extractor, a
               deterministic test double. It is not a language model. OCR is not
-              implemented.
+              implemented. On the seeded database, accepting PO-B-100, DN-B-100,
+              or INV-B-100 is refused so those records stay unchanged. The full
+              upload demonstration uses a separate database.
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-3'>

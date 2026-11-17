@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { acceptDocument, getDocument } from '@/lib/api'
+import { ApiError, acceptDocument, getDocument } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -132,9 +132,21 @@ export function DocumentDetailPage() {
                   </p>
                 ) : null}
                 {acceptMutation.isError ? (
-                  <p className='text-sm text-destructive' role='alert'>
-                    {acceptMutation.error.message}
-                  </p>
+                  <div className='space-y-1' role='alert'>
+                    <p className='text-sm text-destructive'>
+                      {acceptMutation.error.message}
+                    </p>
+                    {acceptMutation.error instanceof ApiError &&
+                    acceptMutation.error.code ===
+                      'procurement_record_exists' ? (
+                      <p className='text-sm text-muted-foreground'>
+                        The existing record was left unchanged. On the seeded
+                        database this protects PO, delivery, and invoice numbers
+                        that already belong to a demonstration case. The upload
+                        walkthrough runs on a separate database.
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {acceptedCaseId ? (
                   <Link
@@ -276,25 +288,32 @@ export function DocumentDetailPage() {
               </CardHeader>
               <CardContent>
                 {document.validation ? (
-                  <ul className='space-y-2'>
-                    {document.validation.warnings.length === 0 ? (
-                      <li className='text-sm text-muted-foreground'>
-                        No validation warnings. Acceptance is still explicit.
-                      </li>
-                    ) : (
-                      document.validation.warnings.map((warning, index) => (
-                        <li
-                          key={`${warning.code}-${index}`}
-                          className='text-sm'
-                        >
-                          <Badge variant='outline' className='me-2'>
-                            {warning.severity}
-                          </Badge>
-                          {warning.message}
+                  <div className='space-y-3'>
+                    <Badge variant='outline'>
+                      {document.validation.blocking
+                        ? 'Blocked'
+                        : 'Ready for review'}
+                    </Badge>
+                    <ul className='space-y-2'>
+                      {document.validation.warnings.length === 0 ? (
+                        <li className='text-sm text-muted-foreground'>
+                          No validation warnings. Acceptance is still explicit.
                         </li>
-                      ))
-                    )}
-                  </ul>
+                      ) : (
+                        document.validation.warnings.map((warning, index) => (
+                          <li
+                            key={`${warning.code}-${index}`}
+                            className='text-sm'
+                          >
+                            <Badge variant='outline' className='me-2'>
+                              {warning.severity}
+                            </Badge>
+                            {warning.message}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
                 ) : (
                   <p className='text-sm text-muted-foreground'>
                     This document was not validated.
@@ -318,7 +337,7 @@ export function DocumentDetailPage() {
                       (item, index) => (
                         <li key={`${item.field}-${index}`} className='text-sm'>
                           <span className='font-medium'>
-                            {item.field}, page {item.page_number}:
+                            {labelField(item.field)}, page {item.page_number}:
                           </span>{' '}
                           <span className='text-muted-foreground'>
                             {item.snippet}
@@ -424,6 +443,10 @@ function ExtractionNotice({
     )
   }
   return null
+}
+
+function labelField(field: string) {
+  return field.replace(/_/g, ' ')
 }
 
 function Field({ label, value }: { label: string; value: string | null }) {

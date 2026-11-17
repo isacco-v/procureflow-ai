@@ -51,10 +51,9 @@ export function CasesPage() {
             Procurement cases
           </h1>
           <p className='max-w-3xl text-muted-foreground'>
-            Seeded scenarios and cases created from accepted PDF uploads.
-            Reconciliation compares stored lines with deterministic arithmetic.
-            Exception and needs-review cases can be opened for a read-only
-            investigation.
+            Seeded scenarios and cases created from accepted PDF uploads. Open a
+            case to see its lines, the reconciliation, and any stored
+            investigation. The quantity case is the interview demonstration.
           </p>
         </div>
 
@@ -119,7 +118,12 @@ export function CasesPage() {
                           {item.reference}
                         </Link>
                       </TableCell>
-                      <TableCell>{item.title}</TableCell>
+                      <TableCell>
+                        <div>{item.title}</div>
+                        <p className='max-w-md text-sm text-muted-foreground'>
+                          {item.summary}
+                        </p>
+                      </TableCell>
                       <TableCell>{item.supplier.name}</TableCell>
                       <TableCell>
                         <Badge variant='outline'>

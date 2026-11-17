@@ -5,7 +5,9 @@ import {
   getCase,
   getLatestReconciliation,
   runReconciliation,
+  type CaseDetail,
   type DocumentLine,
+  type Finding,
   type Reconciliation,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
@@ -95,6 +97,11 @@ export function CaseDetailPage() {
                 {caseQuery.data.reference} · {caseQuery.data.supplier.name}.{' '}
                 {caseQuery.data.summary}
               </p>
+              <p className='max-w-3xl text-sm text-muted-foreground'>
+                {caseQuery.data.origin === 'upload'
+                  ? 'Accepted from uploaded PDFs. The matcher compares those stored lines and does not recalculate them from the file.'
+                  : 'Loaded by the synthetic seed. Reconciliation and investigation read these stored lines. They do not re-read a PDF, and they do not change the historical live results.'}
+              </p>
             </>
           ) : null}
         </div>
@@ -129,9 +136,10 @@ export function CaseDetailPage() {
                 <DocumentBlock
                   number={caseQuery.data.purchase_order.number}
                   meta={`${caseQuery.data.purchase_order.issued_on} · ${caseQuery.data.purchase_order.currency}`}
-                  sourceDocumentId={
+                  uploadId={uploadIdFor(
+                    caseQuery.data,
                     caseQuery.data.purchase_order.source_document_id
-                  }
+                  )}
                   lines={caseQuery.data.purchase_order.lines}
                   showPrice
                 />
@@ -148,7 +156,10 @@ export function CaseDetailPage() {
                       key={note.id}
                       number={note.number}
                       meta={`${note.delivered_on} · purchase order ${note.purchase_order_number ?? 'not cited'}`}
-                      sourceDocumentId={note.source_document_id}
+                      uploadId={uploadIdFor(
+                        caseQuery.data,
+                        note.source_document_id
+                      )}
                       lines={note.lines}
                     />
                   ))
@@ -162,7 +173,10 @@ export function CaseDetailPage() {
                       key={invoice.id}
                       number={invoice.number}
                       meta={`${invoice.issued_on} · ${invoice.currency} · purchase order ${invoice.purchase_order_number ?? 'not cited'}`}
-                      sourceDocumentId={invoice.source_document_id}
+                      uploadId={uploadIdFor(
+                        caseQuery.data,
+                        invoice.source_document_id
+                      )}
                       lines={invoice.lines}
                       showPrice
                     />
@@ -183,6 +197,12 @@ export function CaseDetailPage() {
             <InvestigationPanel
               caseId={caseId}
               reconciliation={reconciliation ?? null}
+              reconciliationLoading={
+                reconciliationQuery.isPending && reconcileMutation.data == null
+              }
+              reconciliationUnavailable={
+                reconciliationQuery.isError && reconcileMutation.data == null
+              }
             />
           </div>
         ) : null}
@@ -219,13 +239,13 @@ function DocumentCard({
 function DocumentBlock({
   number,
   meta,
-  sourceDocumentId,
+  uploadId,
   lines,
   showPrice = false,
 }: {
   number: string
   meta: string
-  sourceDocumentId: string
+  uploadId: string | null
   lines: DocumentLine[]
   showPrice?: boolean
 }) {
@@ -234,9 +254,19 @@ function DocumentBlock({
       <div>
         <h2 className='font-medium'>{number}</h2>
         <p className='text-sm text-muted-foreground'>{meta}</p>
-        <p className='text-xs text-muted-foreground'>
-          Source document {sourceDocumentId}
-        </p>
+        {uploadId ? (
+          <Link
+            to='/documents/$documentId'
+            params={{ documentId: uploadId }}
+            className='text-sm font-medium underline-offset-4 hover:underline'
+          >
+            View parsed upload
+          </Link>
+        ) : (
+          <p className='text-xs text-muted-foreground'>
+            Stored with the case. This row is not an uploaded PDF.
+          </p>
+        )}
       </div>
       <Table>
         <TableHeader>
@@ -327,13 +357,22 @@ function ReconciliationCard({
                 className='space-y-2 rounded-md border p-3'
               >
                 <div className='flex flex-wrap items-center gap-2'>
-                  <span className='font-medium'>{finding.code}</span>
+                  <span className='font-medium'>
+                    {findingLabels[finding.code]}
+                  </span>
+                  <Badge variant='outline'>{finding.code}</Badge>
                   <StatusBadge status={finding.status} />
                   {finding.product_code ? (
                     <Badge variant='outline'>{finding.product_code}</Badge>
                   ) : null}
                 </div>
                 <p className='text-sm'>{finding.message}</p>
+                {hasQuantityGap(finding.quantity_difference) ? (
+                  <p className='text-sm font-medium'>
+                    Quantity gap {finding.quantity_difference}{' '}
+                    {finding.unit ?? ''}
+                  </p>
+                ) : null}
                 <dl className='grid gap-2 text-sm sm:grid-cols-3'>
                   <Quantity
                     label='Ordered'
@@ -351,12 +390,6 @@ function ReconciliationCard({
                     unit={finding.unit}
                   />
                 </dl>
-                {finding.quantity_difference !== null ? (
-                  <p className='text-sm'>
-                    Quantity difference {finding.quantity_difference}{' '}
-                    {finding.unit ?? ''}
-                  </p>
-                ) : null}
                 {finding.purchase_order_unit_price !== null ||
                 finding.invoice_unit_price !== null ? (
                   <p className='text-sm'>
@@ -385,6 +418,38 @@ function ReconciliationCard({
       </CardContent>
     </Card>
   )
+}
+
+function uploadIdFor(detail: CaseDetail, sourceDocumentId: string) {
+  return (
+    detail.documents.find((document) => document.id === sourceDocumentId)
+      ?.upload_id ?? null
+  )
+}
+
+const findingLabels: Record<Finding['code'], string> = {
+  LINE_RECONCILED: 'Line reconciled',
+  ORDERED_NOT_DELIVERED: 'Ordered, not delivered',
+  DELIVERED_NOT_ORDERED: 'Delivered, not ordered',
+  INVOICED_WITHOUT_DELIVERY: 'Invoiced without delivery',
+  DELIVERED_NOT_INVOICED: 'Delivered, not invoiced',
+  INVOICED_NOT_ORDERED: 'Invoiced, not ordered',
+  ORDERED_NOT_INVOICED: 'Ordered, not invoiced',
+  PRICE_MISMATCH: 'Price mismatch',
+  INCONSISTENT_UNIT_PRICE: 'Inconsistent unit price',
+  MISSING_UNIT_PRICE: 'Missing unit price',
+  UNCERTAIN_PRODUCT_MAPPING: 'Uncertain product mapping',
+  MISSING_PURCHASE_ORDER: 'Missing purchase order',
+  MISSING_REFERENCE: 'Missing reference',
+  REFERENCE_MISMATCH: 'Reference mismatch',
+  CURRENCY_MISMATCH: 'Currency mismatch',
+  MISSING_CURRENCY: 'Missing currency',
+  UNIT_MISMATCH: 'Unit mismatch',
+  NO_LINES: 'No lines',
+}
+
+function hasQuantityGap(value: string | null) {
+  return value !== null && !/^0+(\.0+)?$/.test(value)
 }
 
 function Quantity({

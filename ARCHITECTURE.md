@@ -3,7 +3,7 @@
 **Status:** foundation, deterministic matcher, a bounded mock investigation, a gated OpenAI investigation adapter, an evidence-sufficiency gate, and a document pipeline whose default extractor is a test double, updated 2026-11-17.  
 **Implemented today:** a modular FastAPI process, configuration, structured request logs, `GET /health`, SQLAlchemy models and Alembic revisions through `20261117_0007`, a pure three-way matcher, a development-only synthetic seed, versioned case, document, and investigation APIs, PDF intake with local content-addressed storage, PyMuPDF text extraction, a mock document extractor, a gated OpenAI extraction adapter that is not enabled, validation before acceptance, a mock-only extraction evaluation, a mock completion provider, a LangGraph investigation, a deterministic evidence check that can send the model back for more tools, lexical policy retrieval, an OpenAI Responses investigation adapter that is not enabled, separate persistence for mock and live attempts, Docker Compose for local PostgreSQL, GitHub Actions for backend tests (with PostgreSQL) and the frontend build, and a React admin shell with an overview, documents, and procurement cases.
 
-OCR, semantic retrieval, a recorded approval decision, and deployment are still designs. The default investigation and the default extractor do not call a model. Neither live adapter was invoked while it was added. Uncertain choices are marked as proposals.
+OCR, semantic retrieval, a recorded approval decision, and deployment are still designs. The default investigation and the default extractor do not call a model. A live extraction and four live investigation attempts were recorded later; V4 passed the evidence gate. Those results are historical. The live flags are off. Uncertain choices are marked as proposals.
 
 The product intent lives in [PROJECT_VISION.md](PROJECT_VISION.md). This file is the technical reference for subsequent work.
 
@@ -418,7 +418,7 @@ Implemented:
 
 Still required before the first real call:
 
-- An explicit decision to spend. This iteration did not set the live flag and did not send a request.
+- An explicit decision to spend. The recorded experiments were that decision. The live flags are off, and a demonstration does not turn them on.
 - No anonymous public route that can reach the live gate. The current route is local. It still cannot spend while the flag is false.
 - Rate limiting before that route is exposed.
 
@@ -460,7 +460,7 @@ The price table is an estimate. A reservation can be higher or lower than the in
 - **Status:** Accepted for the workflow. The live adapter is implemented and not enabled.
 - **Context:** Exception handling needs different evidence for different discrepancies. Three-way arithmetic does not.
 - **Decision:** Use LangGraph for investigation. Keep the matcher a function. The decision interface selects tools. The default implementation is a deterministic test double. The OpenAI implementation may select tools only when the live gate is open, and the product must keep calling the mock by its name.
-- **Consequences:** Budgets, citations, and tool history are real. Mock recommendations are scripted from finding codes. Live recommendations come from `record_investigation_outcome` and are rejected when they cite evidence the tools did not return. No live call has been made.
+- **Consequences:** Budgets, citations, and tool history are real. Mock recommendations are scripted from finding codes. Live recommendations come from `record_investigation_outcome` and are rejected when they cite evidence the tools did not return. Historical live attempts are stored. V4 is the first evidence-validated one. The adapter stays gated off.
 - **Validation:** Tests cover the quantity, price, and uncertain-product cases, missing evidence, tool failure, limits, invalid output, and instruction-like document text. Separate tests drive the OpenAI adapter with a fake Responses transport. They make no paid call.
 
 ### ADR-004 — pgvector in the primary database
@@ -505,8 +505,8 @@ The price table is an estimate. A reservation can be higher or lower than the in
 | SQLAlchemy session and Alembic | Yes, through `20261117_0007` | A recorded approval decision distinct from document acceptance |
 | PostgreSQL via Compose, pgvector image | Local database, domain tables, lexical policy search | The pgvector extension and semantic retrieval |
 | AI provider interface and mock | Yes. Investigation and extraction adapters, price tables, and separate budgets exist and stay off | Turning a live gate on for a budgeted call |
-| LangGraph investigation | Yes. Default selector is a test double. The OpenAI selector uses the same graph and is gated off | A live call through that selector |
-| Document intake and extraction | Yes. Mock extractor, validation, and explicit acceptance. The OpenAI extractor is gated off. OCR is not implemented | A live extraction and an OCR fallback |
+| LangGraph investigation | Yes. Default selector is a test double. The OpenAI selector uses the same graph. Historical live attempts are stored, and the gate is off | Another live call, which is not part of the demo |
+| Document intake and extraction | Yes. Mock extractor, validation, and explicit acceptance. One historical live extraction is recorded. The OpenAI extractor is gated off. OCR is not implemented | OCR for image-only PDFs |
 | Deterministic three-way matching | Yes, including lines accepted from an upload | Tax and stated-total comparison |
 | Authentication and roles | No | Before any shared deployment |
 | CI | Backend tests, PostgreSQL service, frontend build | Hosted environment checks |

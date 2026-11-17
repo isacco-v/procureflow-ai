@@ -35,7 +35,8 @@ export function OverviewPage() {
           <h1 className='text-2xl font-bold tracking-tight'>ProcureFlow AI</h1>
           <p className='max-w-2xl text-muted-foreground'>
             Upload PDFs on the documents screen, or open the seeded cases.
-            Reconciliation stays deterministic.{' '}
+            Reconciliation stays deterministic. A recorded live investigation is
+            documented separately and is not running on this page.{' '}
             <Link
               to='/documents'
               className='font-medium text-foreground underline-offset-4 hover:underline'
@@ -117,7 +118,9 @@ export function OverviewPage() {
                     PDF upload with mock extraction. OCR is not implemented
                   </li>
                   <li>
-                    Mock investigation of exceptions. Live model calls stay off
+                    Mock investigation of exceptions. The API default does not
+                    call a model. Historical live results stay in the experiment
+                    reports
                   </li>
                 </ul>
               </div>
