@@ -15,8 +15,10 @@ gate is open. Tests pass a transport and do not open a socket.
 from __future__ import annotations
 
 import json
+import re
+import time
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAIError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -38,6 +40,7 @@ from app.domain.investigation import (
     StructuredFindingDraft,
     ToolCall,
     ToolObservation,
+    ValidationDiagnostic,
 )
 
 OUTCOME_TOOL = "record_investigation_outcome"
@@ -69,8 +72,12 @@ Evidence:
   records. A line counts only when a tool returned that line.
 - Stop when the retrieved line evidence supports an outcome, or when more
   evidence would not make the conclusion reliable.
-- If an outcome is rejected, the rejection lists missing evidence categories.
-  Choose any read-only tools you still need. Do not invent the missing lines.
+- If an outcome is rejected for missing evidence, the rejection lists those
+  categories. Choose any read-only tools you still need. Do not invent the
+  missing lines.
+- If record_investigation_outcome is rejected for a schema mismatch, the
+  rejection lists field paths and error codes. Correct those fields, or
+  choose any read-only tool that is still needed. Do not invent evidence.
 - If the evidence cannot be retrieved, record an inconclusive outcome and name
   the missing categories.
 - Separate observed facts, possible explanations, missing evidence, and
@@ -117,7 +124,7 @@ _FINDING_SCHEMA: dict[str, Any] = {
     "properties": {
         "code": {"type": "string"},
         "summary": {"type": "string"},
-        "evidence_labels": {"type": "array", "items": {"type": "string"}},
+        "evidence_labels": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
     },
     "required": ["code", "summary", "evidence_labels"],
     "additionalProperties": False,
@@ -131,14 +138,18 @@ _OUTCOME_PARAMETERS: dict[str, Any] = {
             "enum": [action.value for action in RecommendedAction],
         },
         "summary": {"type": "string"},
-        "finding_summaries": {"type": "array", "items": _FINDING_SCHEMA},
-        "citation_section_codes": {"type": "array", "items": {"type": "string"}},
-        "evidence_labels": {"type": "array", "items": {"type": "string"}},
-        "missing_evidence": {"type": "array", "items": {"type": "string"}},
-        "observed_facts": {"type": "array", "items": {"type": "string"}},
-        "possible_explanations": {"type": "array", "items": {"type": "string"}},
-        "next_actions": {"type": "array", "items": {"type": "string"}},
-        "review_required": {"type": "boolean"},
+        "finding_summaries": {"type": "array", "items": _FINDING_SCHEMA, "maxItems": 20},
+        "citation_section_codes": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
+        "evidence_labels": {"type": "array", "items": {"type": "string"}, "maxItems": 40},
+        "missing_evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+        "observed_facts": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+        "possible_explanations": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+        "next_actions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+        "review_required": {
+            "type": "boolean",
+            "enum": [True],
+            "description": "Always true. Human review cannot be waived.",
+        },
     },
     "required": [
         "outcome",
@@ -227,11 +238,7 @@ class RecordedInvestigationOutcome(BaseModel):
     observed_facts: list[str] = Field(default_factory=list, max_length=20)
     possible_explanations: list[str] = Field(default_factory=list, max_length=20)
     next_actions: list[str] = Field(default_factory=list, max_length=20)
-    review_required: bool
-
-    def accepted_review(self) -> None:
-        if self.review_required is not True:
-            raise ValueError("Human review is required.")
+    review_required: Literal[True]
 
 
 class ResponsesTransport(Protocol):
@@ -285,6 +292,7 @@ class OpenAIInvestigationModel:
         self._seen = 0
         self._started = False
         self._outcome_call_id: str | None = None
+        self._turn_started = 0.0
         if transport is not None:
             self._transport = transport
             return
@@ -296,13 +304,98 @@ class OpenAIInvestigationModel:
         self._transport = OpenAIResponsesTransport(settings)
 
     def decide(self, observation: DecisionObservation) -> AgentDecision:
+        self._begin_turn(observation)
+        spent = _Usage(0, 0, Decimal("0"))
+        diagnostics: list[dict[str, Any]] = []
+        while True:
+            try:
+                self._ensure_request_allowed()
+            except InvestigationModelStop as stop:
+                raise _merge_stop(stop, spent, diagnostics) from stop
+            payload = self._payload()
+            encoded = json.dumps(payload, default=str)
+            self._reject_secret_in_payload(encoded)
+            reservation = reserve_request_cost_usd(
+                prompt_characters=len(encoded),
+                max_output_tokens=self._settings.investigation_max_output_tokens,
+                settings=self._settings,
+            )
+            remaining = self._remaining_budget(observation) - spent.estimated_cost_usd
+            if remaining < 0:
+                remaining = Decimal("0")
+            if reservation.estimated_cost_usd > remaining:
+                raise _merge_stop(
+                    InvestigationModelStop(
+                        InvestigationStatus.BUDGET_EXCEEDED,
+                        "cost_limit",
+                        "The estimated cost of the next model request exceeds the remaining "
+                        "investigation budget. No request was sent.",
+                    ),
+                    spent,
+                    diagnostics,
+                )
+            timeout = self._timeout_seconds(observation)
+            if timeout <= 0:
+                raise _merge_stop(
+                    InvestigationModelStop(
+                        InvestigationStatus.TIMED_OUT,
+                        "timeout",
+                        "The time limit was reached before another model request was sent.",
+                    ),
+                    spent,
+                    diagnostics,
+                )
+            self._requests += 1
+            try:
+                response = self._call(payload, timeout)
+            except InvestigationModelStop as stop:
+                raise _merge_stop(stop, spent, diagnostics) from stop
+            usage = self._usage(response, reservation)
+            spent = _add_usage(spent, usage)
+            try:
+                decision = self._interpret(response, usage)
+            except _OutcomeRejected as rejected:
+                diagnostics.append(rejected.diagnostic)
+                if not rejected.recoverable or rejected.call_id is None:
+                    raise _stop_with_usage(
+                        InvestigationStatus.INVALID_OUTPUT,
+                        "invalid_output",
+                        _rejection_detail(rejected.diagnostic),
+                        spent,
+                        diagnostics=diagnostics,
+                    ) from rejected
+                self._input.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": rejected.call_id,
+                        "output": _validation_feedback(rejected.diagnostic),
+                    }
+                )
+                self._outcome_call_id = None
+                continue
+            except InvestigationModelStop as stop:
+                raise _merge_stop(stop, spent, diagnostics) from stop
+            return decision.model_copy(
+                update={
+                    "input_tokens": spent.input_tokens,
+                    "output_tokens": spent.output_tokens,
+                    "estimated_cost_usd": spent.estimated_cost_usd,
+                    "validation_diagnostics": [
+                        ValidationDiagnostic.model_validate(item) for item in diagnostics
+                    ],
+                }
+            )
+
+    def _begin_turn(self, observation: DecisionObservation) -> None:
+        self._turn_started = time.monotonic()
         if not self._started:
             self._input = [
                 {"role": "user", "content": _initial_content(observation)},
             ]
             self._seen = len(observation.tools)
             self._started = True
-        elif observation.evidence_feedback and self._outcome_call_id is not None:
+            return
+        if observation.evidence_feedback and self._outcome_call_id is not None:
             self._input.append(
                 {
                     "type": "function_call_output",
@@ -311,36 +404,8 @@ class OpenAIInvestigationModel:
                 }
             )
             self._outcome_call_id = None
-        else:
-            self._append_tool_outputs(observation)
-        self._ensure_request_allowed()
-        payload = self._payload()
-        encoded = json.dumps(payload, default=str)
-        self._reject_secret_in_payload(encoded)
-        reservation = reserve_request_cost_usd(
-            prompt_characters=len(encoded),
-            max_output_tokens=self._settings.investigation_max_output_tokens,
-            settings=self._settings,
-        )
-        remaining = self._remaining_budget(observation)
-        if reservation.estimated_cost_usd > remaining:
-            raise InvestigationModelStop(
-                InvestigationStatus.BUDGET_EXCEEDED,
-                "cost_limit",
-                "The estimated cost of the next model request exceeds the remaining "
-                "investigation budget. No request was sent.",
-            )
-        timeout = self._timeout_seconds(observation)
-        if timeout <= 0:
-            raise InvestigationModelStop(
-                InvestigationStatus.TIMED_OUT,
-                "timeout",
-                "The time limit was reached before another model request was sent.",
-            )
-        self._requests += 1
-        response = self._call(payload, timeout)
-        usage = self._usage(response, reservation)
-        return self._interpret(response, usage)
+            return
+        self._append_tool_outputs(observation)
 
     def _append_tool_outputs(self, observation: DecisionObservation) -> None:
         if not self._pending:
@@ -425,7 +490,8 @@ class OpenAIInvestigationModel:
         configured = self._settings.openai_request_timeout_seconds
         if observation.remaining_seconds is None:
             return configured
-        return min(configured, observation.remaining_seconds)
+        elapsed = time.monotonic() - self._turn_started
+        return min(configured, observation.remaining_seconds - elapsed)
 
     def _call(self, payload: dict[str, Any], timeout: float) -> Any:
         try:
@@ -472,20 +538,24 @@ class OpenAIInvestigationModel:
         return _Usage(input_tokens, output_tokens, cost)
 
     def _interpret(self, response: Any, usage: _Usage) -> AgentDecision:
+        response_id = _response_id(response)
         status = str(getattr(response, "status", "") or "completed")
         if getattr(response, "error", None) or status in {"failed", "cancelled", "incomplete"}:
-            code = "invalid_output" if status == "incomplete" else "model_request_failed"
-            detail = (
-                "The model response was incomplete."
-                if status == "incomplete"
-                else "The model response could not be used."
+            if status == "incomplete":
+                raise _invalid_stop(
+                    usage,
+                    detail="The model response was incomplete.",
+                    category="incomplete_output",
+                    error_code="incomplete",
+                    output_type="response",
+                    response_id=response_id,
+                )
+            raise _stop_with_usage(
+                InvestigationStatus.FAILED,
+                "model_request_failed",
+                "The model response could not be used.",
+                usage,
             )
-            failed = (
-                InvestigationStatus.INVALID_OUTPUT
-                if status == "incomplete"
-                else InvestigationStatus.FAILED
-            )
-            raise _stop_with_usage(failed, code, detail, usage)
         if status != "completed":
             raise _stop_with_usage(
                 InvestigationStatus.FAILED,
@@ -498,18 +568,22 @@ class OpenAIInvestigationModel:
             return _refused(usage)
         calls = [item for item in output if _attr(item, "type") == "function_call"]
         if not calls:
-            raise _stop_with_usage(
-                InvestigationStatus.INVALID_OUTPUT,
-                "invalid_output",
-                "The model output did not match the investigation schema.",
+            raise _invalid_stop(
                 usage,
+                detail="The model output did not match the investigation schema.",
+                category="malformed_output",
+                error_code="no_function_call",
+                output_type="message",
+                response_id=response_id,
             )
         if len(calls) > len(TOOL_NAMES) + 1:
-            raise _stop_with_usage(
-                InvestigationStatus.INVALID_OUTPUT,
-                "invalid_output",
-                "The model output did not match the investigation schema.",
+            raise _invalid_stop(
                 usage,
+                detail="The model output did not match the investigation schema.",
+                category="malformed_output",
+                error_code="too_many_function_calls",
+                output_type="function_call",
+                response_id=response_id,
             )
         evidence: list[tuple[str, str, dict[str, Any]]] = []
         outcomes: list[Any] = []
@@ -517,27 +591,32 @@ class OpenAIInvestigationModel:
         for item in calls:
             item_status = str(_attr(item, "status") or "completed")
             if item_status == "incomplete":
-                raise _stop_with_usage(
-                    InvestigationStatus.INVALID_OUTPUT,
-                    "invalid_output",
-                    "The model output did not match the investigation schema.",
+                raise _invalid_stop(
                     usage,
+                    detail="The model output did not match the investigation schema.",
+                    category="incomplete_output",
+                    error_code="incomplete_function_call",
+                    output_type="function_call",
+                    response_id=response_id,
+                    tool_name=_tool_name(item),
                 )
             call_id = _call_id(item)
             name = _attr(item, "name")
             if not isinstance(name, str) or call_id is None or call_id in seen_ids:
-                raise _stop_with_usage(
-                    InvestigationStatus.INVALID_OUTPUT,
-                    "invalid_output",
-                    "The model output did not match the investigation schema.",
+                raise _invalid_stop(
                     usage,
+                    detail="The model output did not match the investigation schema.",
+                    category="malformed_output",
+                    error_code="invalid_function_call",
+                    output_type="function_call",
+                    response_id=response_id,
                 )
             seen_ids.add(call_id)
             if name == OUTCOME_TOOL:
                 outcomes.append(item)
                 continue
             evidence.append((call_id, name, _bounded_arguments(_attr(item, "arguments"))))
-        self._remember(output, usage)
+        self._remember(output, usage, response_id)
         if evidence:
             self._pending = [(call_id, name) for call_id, name, _arguments in evidence]
             self._input.extend(_deferred_outcome_outputs(outcomes))
@@ -553,46 +632,77 @@ class OpenAIInvestigationModel:
                 estimated_cost_usd=usage.estimated_cost_usd,
             )
         if len(outcomes) != 1:
-            raise _stop_with_usage(
-                InvestigationStatus.INVALID_OUTPUT,
-                "invalid_output",
-                "The model output did not match the investigation schema.",
+            raise _invalid_stop(
                 usage,
+                detail="The model output did not match the investigation schema.",
+                category="malformed_output",
+                error_code="outcome_count",
+                output_type="function_call",
+                response_id=response_id,
+                tool_name=OUTCOME_TOOL,
             )
         self._outcome_call_id = _call_id(outcomes[0])
-        return _outcome_decision(outcomes[0], usage)
+        return _outcome_decision(outcomes[0], usage, response_id)
 
-    def _remember(self, output: list[Any], usage: _Usage) -> None:
+    def _remember(self, output: list[Any], usage: _Usage, response_id: str | None) -> None:
         for item in output:
             ready = _replay_item(item)
             if "type" not in ready:
-                raise _stop_with_usage(
-                    InvestigationStatus.INVALID_OUTPUT,
-                    "invalid_output",
-                    "The model output did not match the investigation schema.",
+                raise _invalid_stop(
                     usage,
+                    detail="The model output did not match the investigation schema.",
+                    category="malformed_output",
+                    error_code="unreadable_output",
+                    output_type="response",
+                    response_id=response_id,
                 )
             self._input.append(ready)
 
 
-def _outcome_decision(item: Any, usage: _Usage) -> AgentDecision:
+def _outcome_decision(item: Any, usage: _Usage, response_id: str | None) -> AgentDecision:
+    parsed_arguments = _parse_arguments(_attr(item, "arguments"))
+    call_id = _call_id(item)
+    if not isinstance(parsed_arguments, dict):
+        raise _OutcomeRejected(
+            _diagnostic(
+                category="malformed_arguments",
+                field_paths=[],
+                error_codes=["invalid_json"],
+                tool_name=OUTCOME_TOOL,
+                output_type="function_call",
+                response_id=response_id,
+            ),
+            call_id=call_id,
+            recoverable=call_id is not None,
+        )
     try:
-        parsed = RecordedInvestigationOutcome.model_validate(_argument_object(item))
-        parsed.accepted_review()
-        unresolved = [text.strip() for text in parsed.missing_evidence if text.strip()]
-        decision_action = (
-            DecisionAction.INCONCLUSIVE
-            if parsed.outcome == "inconclusive" or parsed.action is RecommendedAction.INCONCLUSIVE
-            else DecisionAction.RECOMMEND
-        )
-        decision_code = (
-            "model_inconclusive"
-            if decision_action is DecisionAction.INCONCLUSIVE
-            and parsed.action is RecommendedAction.INCONCLUSIVE
-            else f"model_{parsed.action.value}"
-        )
-        if len(decision_code) > 64:
-            decision_code = decision_code[:64]
+        parsed = RecordedInvestigationOutcome.model_validate(parsed_arguments)
+    except ValidationError as exc:
+        unsafe = _review_required_rejected(exc)
+        raise _OutcomeRejected(
+            _diagnostic_from_validation(
+                exc,
+                category="unsafe_output" if unsafe else "schema_mismatch",
+                response_id=response_id,
+            ),
+            call_id=call_id,
+            recoverable=call_id is not None and not unsafe,
+        ) from exc
+    unresolved = [text.strip() for text in parsed.missing_evidence if text.strip()]
+    decision_action = (
+        DecisionAction.INCONCLUSIVE
+        if parsed.outcome == "inconclusive" or parsed.action is RecommendedAction.INCONCLUSIVE
+        else DecisionAction.RECOMMEND
+    )
+    decision_code = (
+        "model_inconclusive"
+        if decision_action is DecisionAction.INCONCLUSIVE
+        and parsed.action is RecommendedAction.INCONCLUSIVE
+        else f"model_{parsed.action.value}"
+    )
+    if len(decision_code) > 64:
+        decision_code = decision_code[:64]
+    try:
         return AgentDecision(
             action=decision_action,
             decision_code=decision_code,
@@ -621,12 +731,19 @@ def _outcome_decision(item: Any, usage: _Usage) -> AgentDecision:
             estimated_cost_usd=usage.estimated_cost_usd,
         )
     except (ValidationError, ValueError) as exc:
-        raise _stop_with_usage(
-            InvestigationStatus.INVALID_OUTPUT,
-            "invalid_output",
-            "The model output did not match the investigation schema.",
-            usage,
-        ) from exc
+        del exc
+        raise _OutcomeRejected(
+            _diagnostic(
+                category="schema_mismatch",
+                field_paths=["finding_summaries"],
+                error_codes=["missing_finding_or_unresolved"],
+                tool_name=OUTCOME_TOOL,
+                output_type="function_call",
+                response_id=response_id,
+            ),
+            call_id=call_id,
+            recoverable=call_id is not None,
+        ) from None
 
 
 def _refused(usage: _Usage) -> AgentDecision:
@@ -724,13 +841,6 @@ def _deferred_outcome_outputs(outcomes: list[Any]) -> list[dict[str, str]]:
             continue
         outputs.append({"type": "function_call_output", "call_id": call_id, "output": message})
     return outputs
-
-
-def _argument_object(item: Any) -> Any:
-    parsed = _parse_arguments(_attr(item, "arguments"))
-    if not isinstance(parsed, dict):
-        return {"_invalid_arguments": True}
-    return parsed
 
 
 def _bounded_arguments(raw: Any) -> dict[str, Any]:
@@ -852,8 +962,197 @@ def _json_ready(value: Any) -> Any:
     return str(value)
 
 
+class _OutcomeRejected(Exception):
+    """An outcome function call that can be described without its arguments."""
+
+    def __init__(
+        self,
+        diagnostic: dict[str, Any],
+        *,
+        call_id: str | None,
+        recoverable: bool,
+    ) -> None:
+        super().__init__(diagnostic["category"])
+        self.diagnostic = diagnostic
+        self.call_id = call_id
+        self.recoverable = recoverable
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+
+
+def _diagnostic(
+    *,
+    category: str,
+    field_paths: list[str],
+    error_codes: list[str],
+    tool_name: str | None,
+    output_type: str | None,
+    response_id: str | None,
+) -> dict[str, Any]:
+    return {
+        "category": category,
+        "field_paths": [path for path in field_paths if _DIAGNOSTIC_TOKEN.fullmatch(path)][:12],
+        "error_codes": [code for code in error_codes if _IDENTIFIER.fullmatch(code)][:12],
+        "graph_step": "decide",
+        "tool_name": tool_name if _safe_identifier(tool_name) else None,
+        "output_type": output_type if _safe_identifier(output_type) else None,
+        "response_id": response_id,
+    }
+
+
+def _diagnostic_from_validation(
+    exc: ValidationError,
+    *,
+    category: str,
+    response_id: str | None,
+) -> dict[str, Any]:
+    paths: list[str] = []
+    codes: list[str] = []
+    for item in exc.errors():
+        path = _field_path(item.get("loc"))
+        code = item.get("type")
+        if path is not None:
+            paths.append(path)
+        if isinstance(code, str):
+            codes.append(code.split(".")[-1])
+    return _diagnostic(
+        category=category,
+        field_paths=paths,
+        error_codes=codes,
+        tool_name=OUTCOME_TOOL,
+        output_type="function_call",
+        response_id=response_id,
+    )
+
+
+def _safe_identifier(value: object) -> bool:
+    return isinstance(value, str) and _IDENTIFIER.fullmatch(value) is not None
+
+
+def _field_path(loc: object) -> str | None:
+    if not isinstance(loc, tuple) or not loc:
+        return None
+    parts: list[str] = []
+    for part in loc:
+        if isinstance(part, int) and part >= 0:
+            parts.append(str(part))
+            continue
+        if isinstance(part, str) and _IDENTIFIER.fullmatch(part):
+            parts.append(part)
+            continue
+        return None
+    path = ".".join(parts)
+    if not _DIAGNOSTIC_TOKEN.fullmatch(path):
+        return None
+    return path
+
+
+def _review_required_rejected(exc: ValidationError) -> bool:
+    for item in exc.errors():
+        if item.get("loc") == ("review_required",) and str(item.get("type", "")).endswith(
+            "literal_error"
+        ):
+            return True
+    return False
+
+
+def _validation_feedback(diagnostic: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "accepted": False,
+            "reason": diagnostic["category"],
+            "field_paths": diagnostic["field_paths"],
+            "error_codes": diagnostic["error_codes"],
+            "note": (
+                "The outcome was not accepted. Correct the listed fields, or call "
+                "any read-only tool that is still needed. Do not invent evidence. "
+                "review_required must be true."
+            ),
+        }
+    )
+
+
+def _rejection_detail(diagnostic: dict[str, Any]) -> str:
+    if diagnostic["category"] == "unsafe_output":
+        return "Human review is required."
+    return "The model output did not match the investigation schema."
+
+
+def _response_id(response: Any) -> str | None:
+    value = _attr(response, "id")
+    if isinstance(value, str) and _DIAGNOSTIC_TOKEN.fullmatch(value):
+        return value
+    return None
+
+
+def _tool_name(item: Any) -> str | None:
+    name = _attr(item, "name")
+    if isinstance(name, str) and _IDENTIFIER.fullmatch(name):
+        return name
+    return None
+
+
+def _add_usage(left: _Usage, right: _Usage) -> _Usage:
+    return _Usage(
+        left.input_tokens + right.input_tokens,
+        left.output_tokens + right.output_tokens,
+        left.estimated_cost_usd + right.estimated_cost_usd,
+    )
+
+
+def _merge_stop(
+    stop: InvestigationModelStop,
+    spent: _Usage,
+    diagnostics: list[dict[str, Any]],
+) -> InvestigationModelStop:
+    return InvestigationModelStop(
+        stop.status,
+        stop.error_code,
+        stop.detail,
+        input_tokens=spent.input_tokens,
+        output_tokens=spent.output_tokens,
+        estimated_cost_usd=spent.estimated_cost_usd,
+        diagnostics=[*diagnostics, *stop.diagnostics],
+    )
+
+
+def _invalid_stop(
+    usage: _Usage,
+    *,
+    detail: str,
+    category: str,
+    error_code: str,
+    output_type: str,
+    response_id: str | None,
+    tool_name: str | None = None,
+) -> InvestigationModelStop:
+    return _stop_with_usage(
+        InvestigationStatus.INVALID_OUTPUT,
+        "invalid_output",
+        detail,
+        usage,
+        diagnostics=[
+            _diagnostic(
+                category=category,
+                field_paths=[],
+                error_codes=[error_code],
+                tool_name=tool_name,
+                output_type=output_type,
+                response_id=response_id,
+            )
+        ],
+    )
+
+
 def _stop_with_usage(
-    status: InvestigationStatus, code: str, detail: str, usage: _Usage
+    status: InvestigationStatus,
+    code: str,
+    detail: str,
+    usage: _Usage,
+    *,
+    diagnostics: list[dict[str, Any]] | None = None,
 ) -> InvestigationModelStop:
     return InvestigationModelStop(
         status,
@@ -862,4 +1161,5 @@ def _stop_with_usage(
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         estimated_cost_usd=usage.estimated_cost_usd,
+        diagnostics=diagnostics,
     )

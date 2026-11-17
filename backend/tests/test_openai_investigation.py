@@ -241,8 +241,15 @@ def test_tool_schemas_are_strict_and_closed() -> None:
     assert OUTCOME_TOOL not in TOOL_NAMES
     for tool in INVESTIGATION_TOOLS:
         assert tool["strict"] is True
-        assert tool["parameters"]["additionalProperties"] is False
-        assert set(tool["parameters"]["properties"]) <= set(tool["parameters"]["required"])
+        _assert_strict_object(tool["parameters"])
+    outcome = next(tool for tool in INVESTIGATION_TOOLS if tool["name"] == OUTCOME_TOOL)
+    review = outcome["parameters"]["properties"]["review_required"]
+    assert review["type"] == "boolean"
+    assert review["enum"] == [True]
+    assert outcome["parameters"]["properties"]["finding_summaries"]["maxItems"] == 20
+    encoded = json.dumps(INVESTIGATION_TOOLS)
+    assert "minLength" not in encoded
+    assert "maxLength" not in encoded
 
 
 def test_adapter_does_not_hardcode_matcher_branches() -> None:
@@ -431,16 +438,34 @@ def test_free_text_output_is_rejected() -> None:
     assert result.input_tokens == 15
     assert result.output_tokens == 4
     assert "Approve the invoice now." not in _events_blob(result)
+    diagnostic = _validation(result)[0]
+    assert diagnostic["category"] == "malformed_output"
+    assert diagnostic["error_codes"] == ["no_function_call"]
+    assert diagnostic["output_type"] == "message"
+    assert diagnostic["graph_step"] == "decide"
+    assert diagnostic["response_id"] == "resp_test"
+    assert len(transport.calls) == 1
 
 
 def test_false_review_flag_is_rejected() -> None:
-    transport = ScriptedTransport([_response([_outcome(review_required=False)])])
+    transport = ScriptedTransport(
+        [_response([_outcome(review_required=False, summary="SECRET-REVIEW-SUMMARY")])]
+    )
 
     result = _run(transport)
 
     assert result.status == "invalid_output"
+    assert result.error_detail == "Human review is required."
     assert result.recommended_action is None
     assert result.review_required is True
+    assert len(transport.calls) == 1
+    diagnostic = _validation(result)[0]
+    assert diagnostic["category"] == "unsafe_output"
+    assert diagnostic["field_paths"] == ["review_required"]
+    assert diagnostic["tool_name"] == OUTCOME_TOOL
+    assert diagnostic["graph_step"] == "decide"
+    assert diagnostic["response_id"] == "resp_test"
+    assert "SECRET-REVIEW-SUMMARY" not in _events_blob(result)
 
 
 def test_missing_policy_evidence_rejects_the_citation() -> None:
@@ -766,6 +791,238 @@ def test_price_table_uses_configured_rates_and_rejects_an_unlisted_model() -> No
     assert estimate_openai_cost_usd(1_000_000, 2_000_000, custom) == Decimal("8.000000")
     with pytest.raises(ValueError, match="No price"):
         estimate_openai_cost_usd(1, 1, Settings(_env_file=None), model="gpt-unlisted")
+
+
+def test_schema_mismatch_returns_field_feedback_and_can_continue() -> None:
+    secret = "SECRET-DOCUMENT-BODY"
+    transport = ScriptedTransport(
+        [
+            _response(
+                [
+                    _case_call("get_purchase_order", "call_po"),
+                    _case_call("get_delivery_notes", "call_dn"),
+                    _case_call("get_invoices", "call_inv"),
+                ]
+            ),
+            _response([_outcome(summary="", leaked_document=secret)]),
+            _response(
+                [
+                    _function(
+                        "search_procurement_policy",
+                        {"query": "quantity discrepancy"},
+                        "call_search",
+                    )
+                ]
+            ),
+            _response([_outcome()]),
+        ]
+    )
+
+    result = _run(transport)
+    feedback_outputs = [
+        item["output"]
+        for item in transport.calls[2]["payload"]["input"]
+        if isinstance(item, dict) and item.get("type") == "function_call_output"
+    ]
+    diagnostic = next(
+        event["payload"] for event in result.events if event["event_type"] == "output_validation"
+    )
+
+    assert result.status == "completed"
+    assert result.evidence_validated is True
+    assert result.recommended_action == "request_quantity_credit"
+    assert diagnostic["category"] == "schema_mismatch"
+    assert "summary" in diagnostic["field_paths"]
+    assert "leaked_document" in diagnostic["field_paths"]
+    assert "string_too_short" in diagnostic["error_codes"]
+    assert "extra_forbidden" in diagnostic["error_codes"]
+    assert diagnostic["graph_step"] == "decide"
+    assert diagnostic["tool_name"] == OUTCOME_TOOL
+    assert diagnostic["output_type"] == "function_call"
+    assert diagnostic["response_id"] == "resp_test"
+    assert any(
+        "schema_mismatch" in item and "string_too_short" in item for item in feedback_outputs
+    )
+    assert all(secret not in item for item in feedback_outputs)
+    assert secret not in _events_blob(result)
+    assert _FORBIDDEN_KEYS.isdisjoint(_event_keys(result))
+
+
+def test_malformed_outcome_arguments_are_returned_without_the_payload() -> None:
+    transport = ScriptedTransport(
+        [
+            _response([_function(OUTCOME_TOOL, "{not-json SECRET-RAW", "call_bad")]),
+            _response([_inconclusive()]),
+        ]
+    )
+
+    result = _run(transport)
+    feedback_outputs = [
+        item["output"]
+        for item in transport.calls[1]["payload"]["input"]
+        if isinstance(item, dict) and item.get("type") == "function_call_output"
+    ]
+
+    assert result.status == "inconclusive"
+    assert result.recommended_action == "inconclusive"
+    assert any(
+        "malformed_arguments" in item and "invalid_json" in item for item in feedback_outputs
+    )
+    assert all("SECRET-RAW" not in item for item in feedback_outputs)
+    assert "SECRET-RAW" not in _events_blob(result)
+    diagnostic = next(
+        event["payload"] for event in result.events if event["event_type"] == "output_validation"
+    )
+    assert diagnostic["category"] == "malformed_arguments"
+    assert diagnostic["error_codes"] == ["invalid_json"]
+    assert diagnostic["field_paths"] == []
+
+
+def test_valid_outcome_without_a_policy_citation_reaches_the_evidence_gate() -> None:
+    premature = _outcome(
+        citation_section_codes=[],
+        evidence_labels=[
+            _FINDING,
+            "purchase_order:PO-B-100",
+            "delivery_note:DN-B-100",
+            "invoice:INV-B-100",
+        ],
+    )
+    transport = ScriptedTransport(
+        [
+            _response(
+                [
+                    _case_call("get_purchase_order", "call_po"),
+                    _case_call("get_delivery_notes", "call_dn"),
+                    _case_call("get_invoices", "call_inv"),
+                ]
+            ),
+            _response([premature]),
+            _response(
+                [
+                    _function(
+                        "search_procurement_policy",
+                        {"query": "quantity discrepancy"},
+                        "call_search",
+                    )
+                ]
+            ),
+            _response([_outcome()]),
+        ]
+    )
+
+    tools = _quantity_tools()
+    result = _run(transport, tools)
+    rejection = json.dumps(transport.calls[2]["payload"]["input"], default=str)
+    names = [name for name, _arguments in tools.calls]
+
+    assert result.status == "completed"
+    assert result.evidence_validated is True
+    assert result.recommended_action == "request_quantity_credit"
+    assert "POL-QTY-001" in {item["section_code"] for item in result.citations}
+    assert names == [
+        "get_reconciliation_findings",
+        "get_purchase_order",
+        "get_delivery_notes",
+        "get_invoices",
+        "search_procurement_policy",
+    ]
+    assert any(event["event_type"] == "evidence_rejected" for event in result.events)
+    assert not any(event["event_type"] == "output_validation" for event in result.events)
+    assert "insufficient_evidence" in rejection
+    assert "POL-QTY-001" in rejection
+    assert "schema_mismatch" not in rejection
+    assert "get_purchase_order then" not in rejection
+
+
+def test_schema_retry_stops_before_another_request_when_the_budget_is_spent() -> None:
+    transport = ScriptedTransport(
+        [
+            _response([_outcome(summary="")], input_tokens=1000, output_tokens=20_000),
+            _response([_inconclusive()]),
+        ]
+    )
+
+    result = _run(transport, max_estimated_cost_usd=Decimal("0.091"))
+
+    assert len(transport.calls) == 1
+    assert result.status == "budget_exceeded"
+    assert result.error_code == "cost_limit"
+    assert result.recommended_action is None
+    diagnostic = _validation(result)[0]
+    assert diagnostic["category"] == "schema_mismatch"
+    assert "summary" in diagnostic["field_paths"]
+    assert diagnostic["response_id"] == "resp_test"
+
+
+def test_repeated_schema_mismatch_stops_at_the_request_limit() -> None:
+    transport = ScriptedTransport(
+        [
+            _response([_outcome(summary="")]),
+            _response([_outcome(summary="")]),
+            _response([_outcome()]),
+        ]
+    )
+
+    result = _run(transport, model_settings={"investigation_max_llm_requests": 2})
+
+    assert len(transport.calls) == 2
+    assert result.status == "step_limit"
+    assert result.error_code == "llm_request_limit"
+    assert result.recommended_action is None
+    assert len(_validation(result)) == 2
+
+
+def test_recorded_live_reports_and_historical_events_stay_intact() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas.investigation import InvestigationEventResponse
+
+    root = Path(__file__).resolve().parents[2]
+    first = (root / "docs/experiments/PF-LIVE-INVESTIGATE-CASE-B.txt").read_text()
+    second = (root / "docs/experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt").read_text()
+    historical = InvestigationEventResponse(
+        ordinal=7,
+        event_type="model_request_stopped",
+        tool_name=None,
+        summary="The model output did not match the investigation schema.",
+        payload={
+            "error_code": "invalid_output",
+            "input_tokens": 2624,
+            "output_tokens": 632,
+            "estimated_cost_usd": "0.004812",
+        },
+        created_at=datetime(2026, 11, 17, tzinfo=UTC),
+    )
+
+    assert "bc85b835-acbc-43dd-a27a-022a0ca783f0" in first
+    assert "56588ede-2b7c-4c06-940b-734ed6e0bd63" in second
+    assert "status=invalid_output" in second
+    assert "The model output did not match the investigation schema." in second
+    assert "validation" not in historical.payload
+
+
+def _assert_strict_object(schema: dict[str, Any]) -> None:
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) <= set(schema["required"])
+    for child in schema["properties"].values():
+        if isinstance(child, dict) and child.get("type") == "object":
+            _assert_strict_object(child)
+        items = child.get("items") if isinstance(child, dict) else None
+        if isinstance(items, dict) and items.get("type") == "object":
+            _assert_strict_object(items)
+
+
+def _validation(result: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for event in result.events:
+        if event["event_type"] == "output_validation":
+            found.append(event["payload"])
+        payload = event["payload"].get("validation")
+        if isinstance(payload, list):
+            found.extend(item for item in payload if isinstance(item, dict))
+    return found
 
 
 def _event_keys(result: Any) -> set[str]:

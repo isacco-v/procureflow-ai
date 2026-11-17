@@ -106,9 +106,9 @@ def assess_evidence(
             )
         )
     for row in quantity:
-        gaps.extend(_quantity_gaps(row, lines, policies))
+        gaps.extend(_quantity_gaps(row, lines, policies, draft))
     for row in price:
-        gaps.extend(_price_gaps(row, lines, policies))
+        gaps.extend(_price_gaps(row, lines, policies, draft))
     for row in product:
         gaps.extend(_product_gaps(row, lines, policies, draft))
     if quantity and draft is not None and draft.action.value == "request_quantity_credit":
@@ -138,6 +138,7 @@ def _quantity_gaps(
     finding: dict[str, Any],
     lines: list[RetrievedLine],
     policies: set[str],
+    draft: RecommendationDraft | None,
 ) -> list[EvidenceGap]:
     product = _text(finding.get("product_code"))
     gaps = [
@@ -174,6 +175,7 @@ def _quantity_gaps(
                 product_code=product,
             )
         )
+    gaps.extend(_policy_citation_gap(draft, _QUANTITY_POLICY, product))
     return gaps
 
 
@@ -181,6 +183,7 @@ def _price_gaps(
     finding: dict[str, Any],
     lines: list[RetrievedLine],
     policies: set[str],
+    draft: RecommendationDraft | None,
 ) -> list[EvidenceGap]:
     product = _text(finding.get("product_code"))
     gaps = [
@@ -209,6 +212,7 @@ def _price_gaps(
                 product_code=product,
             )
         )
+    gaps.extend(_policy_citation_gap(draft, _PRICE_POLICY, product))
     return gaps
 
 
@@ -257,6 +261,7 @@ def _product_gaps(
         )
     if _PRODUCT_POLICY not in policies:
         gaps.append(_gap("policy", f"Applicable policy {_PRODUCT_POLICY} was not retrieved."))
+    gaps.extend(_policy_citation_gap(draft, _PRODUCT_POLICY, None))
     text = "" if draft is None else _recommendation_text(draft)
     action = "" if draft is None else draft.action.value
     if not _uncertainty_is_explicit(action, text):
@@ -398,6 +403,25 @@ def _line(line: object, document_type: str, number: object) -> RetrievedLine | N
         unit_price=_present(line.get("unit_price")),
         product_code_observed="product_code" in line,
     )
+
+
+def _policy_citation_gap(
+    draft: RecommendationDraft | None,
+    code: str,
+    product_code: str | None,
+) -> list[EvidenceGap]:
+    if draft is None or draft.action.value not in _CONFIDENT:
+        return []
+    cited = {item.strip() for item in draft.citation_section_codes if item.strip()}
+    if code in cited:
+        return []
+    return [
+        _gap(
+            "policy",
+            f"Applicable policy {code} was not cited.",
+            product_code=product_code,
+        )
+    ]
 
 
 def _policies(tool_results: list[dict[str, Any]]) -> set[str]:

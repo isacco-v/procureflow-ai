@@ -61,15 +61,6 @@ TOOL_NAMES = frozenset(
     }
 )
 
-_CITED_ACTIONS = frozenset(
-    {
-        RecommendedAction.REQUEST_QUANTITY_CREDIT,
-        RecommendedAction.HOLD_FOR_PRICE_REVIEW,
-        RecommendedAction.ESCALATE_PRODUCT_IDENTITY,
-        RecommendedAction.REQUEST_SUPPLIER_CLARIFICATION,
-    }
-)
-
 
 class CaseToolArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -126,6 +117,24 @@ class EvidenceGap(BaseModel):
     document_numbers: list[str] = Field(default_factory=list)
 
 
+class ValidationDiagnostic(BaseModel):
+    """A safe description of one rejected model output.
+
+    Field paths and error codes are identifiers. This record does not carry
+    argument values, document text, or hidden reasoning.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: str = Field(min_length=1, max_length=64)
+    field_paths: list[str] = Field(default_factory=list, max_length=12)
+    error_codes: list[str] = Field(default_factory=list, max_length=12)
+    graph_step: str = Field(min_length=1, max_length=32)
+    tool_name: str | None = Field(default=None, max_length=64)
+    output_type: str | None = Field(default=None, max_length=64)
+    response_id: str | None = Field(default=None, max_length=80)
+
+
 class RecommendationDraft(BaseModel):
     """A recommendation the workflow can validate.
 
@@ -160,6 +169,7 @@ class AgentDecision(BaseModel):
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     estimated_cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
+    validation_diagnostics: list[ValidationDiagnostic] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def shape_matches_action(self) -> "AgentDecision":
@@ -169,11 +179,6 @@ class AgentDecision(BaseModel):
             return self
         if self.tool_calls or self.recommendation is None:
             raise ValueError("A terminal decision needs a recommendation and no tool calls.")
-        if (
-            self.recommendation.action in _CITED_ACTIONS
-            and not self.recommendation.citation_section_codes
-        ):
-            raise ValueError("This recommendation must cite a retrieved policy section.")
         if not self.recommendation.finding_summaries and not self.recommendation.unresolved:
             raise ValueError("A terminal decision needs a finding or an unresolved issue.")
         return self

@@ -1,6 +1,7 @@
 """Stop an investigation model without hiding the reason or the usage."""
 
 from decimal import Decimal
+from typing import Any
 
 from app.domain.investigation import InvestigationStatus
 
@@ -22,6 +23,7 @@ class InvestigationModelStop(Exception):
         input_tokens: int = 0,
         output_tokens: int = 0,
         estimated_cost_usd: Decimal | None = None,
+        diagnostics: list[dict[str, Any]] | None = None,
     ) -> None:
         super().__init__(detail)
         self.status = status
@@ -30,3 +32,4 @@ class InvestigationModelStop(Exception):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.estimated_cost_usd = Decimal("0") if estimated_cost_usd is None else estimated_cost_usd
+        self.diagnostics = [] if diagnostics is None else list(diagnostics)

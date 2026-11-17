@@ -12,6 +12,7 @@ os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["LANGCHAIN_TRACING"] = "false"
 
+import re  # noqa: E402
 import time  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
 from decimal import Decimal  # noqa: E402
@@ -44,6 +45,7 @@ from app.services.investigation_validation import (  # noqa: E402
 _FORBIDDEN_EVENT_KEYS = frozenset(
     {"reasoning", "thought", "chain_of_thought", "scratchpad", "hidden"}
 )
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
 class Clock(Protocol):
@@ -238,8 +240,17 @@ def _compile(
         input_tokens = state["input_tokens"] + decision.input_tokens
         output_tokens = state["output_tokens"] + decision.output_tokens
         cost = Decimal(state["estimated_cost_usd"]) + decision.estimated_cost_usd
+        events = list(state["events"])
+        for diagnostic in _public_diagnostics(list(decision.validation_diagnostics)):
+            events = _append(
+                events,
+                "output_validation",
+                "The model output failed validation and corrective feedback was returned.",
+                diagnostic,
+                tool_name=diagnostic.get("tool_name"),
+            )
         events = _append(
-            state["events"],
+            events,
             "model_decision",
             _decision_summary(state["reasoning_kind"], decision),
             {
@@ -761,16 +772,20 @@ def _stopped_model(
         status = InvestigationStatus.BUDGET_EXCEEDED
         error_code = "cost_limit"
         detail = "The estimated-cost limit was reached."
+    payload: dict[str, Any] = {
+        "error_code": error_code,
+        "input_tokens": stop.input_tokens,
+        "output_tokens": stop.output_tokens,
+        "estimated_cost_usd": format(stop.estimated_cost_usd, "f"),
+    }
+    diagnostics = _public_diagnostics(stop.diagnostics)
+    if diagnostics:
+        payload["validation"] = diagnostics
     events = _append(
         list(state["events"]),
         "model_request_stopped",
         detail,
-        {
-            "error_code": error_code,
-            "input_tokens": stop.input_tokens,
-            "output_tokens": stop.output_tokens,
-            "estimated_cost_usd": format(stop.estimated_cost_usd, "f"),
-        },
+        payload,
     )
     stopped = _exhausted(
         {**state, "events": events},
@@ -877,6 +892,46 @@ def _merge_evidence(
         updated.append(item.model_dump(mode="json"))
         seen.add(item.label)
     return updated
+
+
+def _public_diagnostics(items: list[Any]) -> list[dict[str, Any]]:
+    published: list[dict[str, Any]] = []
+    for item in items:
+        raw = item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+        if not isinstance(raw, dict):
+            continue
+        category = raw.get("category")
+        step = raw.get("graph_step")
+        if not isinstance(category, str) or _DIAGNOSTIC_TOKEN.fullmatch(category) is None:
+            continue
+        if not isinstance(step, str) or _DIAGNOSTIC_TOKEN.fullmatch(step) is None:
+            continue
+        published.append(
+            {
+                "category": category,
+                "field_paths": _diagnostic_tokens(raw.get("field_paths")),
+                "error_codes": _diagnostic_tokens(raw.get("error_codes")),
+                "graph_step": step,
+                "tool_name": _optional_token(raw.get("tool_name")),
+                "output_type": _optional_token(raw.get("output_type")),
+                "response_id": _optional_token(raw.get("response_id")),
+            }
+        )
+    return published
+
+
+def _diagnostic_tokens(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and _DIAGNOSTIC_TOKEN.fullmatch(item)][
+        :12
+    ]
+
+
+def _optional_token(value: object) -> str | None:
+    if isinstance(value, str) and _DIAGNOSTIC_TOKEN.fullmatch(value):
+        return value
+    return None
 
 
 def _jsonable(value: Any) -> Any:

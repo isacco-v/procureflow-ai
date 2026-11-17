@@ -1,6 +1,6 @@
 # Controlled live experiment
 
-Extraction test PF-LIVE-EXTRACT-PO-B was run once. Its report is [experiments/PF-LIVE-EXTRACT-PO-B.txt](experiments/PF-LIVE-EXTRACT-PO-B.txt). Investigation test PF-LIVE-INVESTIGATE-CASE-B was run once. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V2 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). These reports are live results and are separate from the mock scores. The end-to-end test has not been run. Live mode is off.
+Extraction test PF-LIVE-EXTRACT-PO-B was run once. Its report is [experiments/PF-LIVE-EXTRACT-PO-B.txt](experiments/PF-LIVE-EXTRACT-PO-B.txt). Investigation test PF-LIVE-INVESTIGATE-CASE-B was run once. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V2 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V3 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). These reports are live results and are separate from the mock scores. The end-to-end test has not been run. Live mode is off. Do not start a V4 investigation automatically.
 
 Application budgets are estimated safeguards, not guaranteed provider billing caps. A reservation can be lower than the provider invoice. `max_retries=0`, so a failed request is not sent again by the SDK. Uploading the same bytes again returns the stored extraction for that extractor and does not send another request.
 
@@ -135,7 +135,13 @@ Pass: `score_live_quantity_investigation` has no failing dimension.
 
 Fail: the new row overwrites the first investigation, `evidence_validated` is false, a source line is missing, the credit treats the balance as cancelled, or a citation was not retrieved.
 
-The stored result of this test is the failed report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). Do not delete that investigation. A second request with the same idempotency key returns it and does not start another model run. Live mode is off.
+The stored result of this test is the failed report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). Do not delete that investigation. A second request with the same idempotency key returns it and does not start another model run. Live mode is off. That report is a historical record. A later code change separates a schema mismatch from the evidence gate and stores field-level validation diagnostics. It does not replace this result.
+
+## D. PF-LIVE-INVESTIGATE-CASE-B-V3
+
+This was one new live attempt on the same seeded reconciliation run. It did not replace attempt 1 or attempt 2. The idempotency key was `pf-live-investigate-case-b-v3`. A later request with that same key returns the stored row and does not send another model request.
+
+The stored result is the failed report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). Do not delete that investigation. The model opened the purchase-order, delivery-note, and invoice lines, the evidence gate rejected the credit, and a later policy search retrieved `POL-QTY-001`. The next model request timed out inside the 15-second wall clock before a corrected outcome was stored. `evidence_validated` is false. Live mode is off. Do not start a V4 investigation automatically.
 
 ## Later: PF-LIVE-E2E-CASE-B
 
