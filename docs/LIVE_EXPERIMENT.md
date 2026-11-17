@@ -1,6 +1,6 @@
 # Controlled live experiment
 
-Extraction test PF-LIVE-EXTRACT-PO-B was run once. Its report is [experiments/PF-LIVE-EXTRACT-PO-B.txt](experiments/PF-LIVE-EXTRACT-PO-B.txt). Investigation test PF-LIVE-INVESTIGATE-CASE-B was run once. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V2 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V3 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). These reports are live results and are separate from the mock scores. The end-to-end test has not been run. Live mode is off. Do not start a V4 investigation automatically.
+Extraction test PF-LIVE-EXTRACT-PO-B was run once. Its report is [experiments/PF-LIVE-EXTRACT-PO-B.txt](experiments/PF-LIVE-EXTRACT-PO-B.txt). Investigation test PF-LIVE-INVESTIGATE-CASE-B was run once. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V2 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V3 was run once and failed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). The separate retest PF-LIVE-INVESTIGATE-CASE-B-V4 was run once and passed. Its report is [experiments/PF-LIVE-INVESTIGATE-CASE-B-V4.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V4.txt). These reports are live results and are separate from the mock scores. The end-to-end test has not been run. Live mode is off. Do not start a V5 investigation automatically.
 
 Application budgets are estimated safeguards, not guaranteed provider billing caps. A reservation can be lower than the provider invoice. `max_retries=0`, so a failed request is not sent again by the SDK. Uploading the same bytes again returns the stored extraction for that extractor and does not send another request.
 
@@ -26,7 +26,7 @@ Leave these false until a person authorizes the spend. Set them in the API proce
 | `EXTRACTION_LIVE_ENABLED` | `true` | `false` |
 | `INVESTIGATION_LIVE_ENABLED` | `false` | `true` |
 
-Defaults that stay in force: extraction budget `$0.05`, investigation budget `$0.10`, extraction output cap `2000`, investigation output cap `1200`, investigation model requests `6`, client `max_retries=0`, Responses `store=false`. Output tokens include reasoning tokens. The investigation follow-up also sends `include: ["reasoning.encrypted_content"]` and replays the prior output items. Those items are not written to the investigation record.
+Defaults that stay in force: extraction budget `$0.05`, investigation budget `$0.10`, extraction output cap `2000`, investigation output cap `1200`, investigation model requests `6`, client `max_retries=0`, Responses `store=false`, investigation request timeout `30` seconds, investigation wall clock `90` seconds. The per-request timeout is reduced to the time still left in that wall clock. A timeout stores a diagnostic and does not send the request again. Output tokens include reasoning tokens. The investigation follow-up also sends `include: ["reasoning.encrypted_content"]` and replays the prior output items. Those items are not written to the investigation record.
 
 Confirm the schema is at head without resetting data:
 
@@ -141,7 +141,13 @@ The stored result of this test is the failed report [experiments/PF-LIVE-INVESTI
 
 This was one new live attempt on the same seeded reconciliation run. It did not replace attempt 1 or attempt 2. The idempotency key was `pf-live-investigate-case-b-v3`. A later request with that same key returns the stored row and does not send another model request.
 
-The stored result is the failed report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). Do not delete that investigation. The model opened the purchase-order, delivery-note, and invoice lines, the evidence gate rejected the credit, and a later policy search retrieved `POL-QTY-001`. The next model request timed out inside the 15-second wall clock before a corrected outcome was stored. `evidence_validated` is false. Live mode is off. Do not start a V4 investigation automatically.
+The stored result is the failed report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt). Do not delete that investigation. The model opened the purchase-order, delivery-note, and invoice lines, the evidence gate rejected the credit, and a later policy search retrieved `POL-QTY-001`. The next model request timed out inside the 15-second wall clock before a corrected outcome was stored. `evidence_validated` is false. That report is a historical record. The authorized V4 run is recorded below.
+
+## E. PF-LIVE-INVESTIGATE-CASE-B-V4
+
+This was one new live attempt on the same seeded reconciliation run. It did not replace attempts 1, 2, or 3. The idempotency key was `pf-live-investigate-case-b-v4`. A later request with that same key returns the stored row and does not send another model request.
+
+The stored result is the passing report [experiments/PF-LIVE-INVESTIGATE-CASE-B-V4.txt](experiments/PF-LIVE-INVESTIGATE-CASE-B-V4.txt). Do not delete that investigation. The evidence gate rejected the first credit because the purchase-order, delivery-note, and invoice lines had not been opened. The model then opened those lines and recorded a conditional quantity credit. `evidence_validated` is true, `review_required` is true, and `payment_authority` is false. `score_live_quantity_investigation` has no failing dimension. Live mode is off. Do not start a V5 investigation automatically.
 
 ## Later: PF-LIVE-E2E-CASE-B
 

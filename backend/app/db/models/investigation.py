@@ -130,6 +130,7 @@ class Investigation(Base):
     possible_explanations: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     missing_evidence: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     next_actions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    prerequisites: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_detail: Mapped[str | None] = mapped_column(Text)
     input_tokens: Mapped[int] = mapped_column(nullable=False)

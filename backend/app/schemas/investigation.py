@@ -49,6 +49,13 @@ class InvestigationEventResponse(BaseModel):
     created_at: datetime
 
 
+class InvestigationPrerequisiteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["future_delivery"]
+    status: Literal["unconfirmed"]
+
+
 class InvestigationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +90,7 @@ class InvestigationResponse(BaseModel):
     possible_explanations: list[str]
     missing_evidence: list[str]
     next_actions: list[str]
+    prerequisites: list[InvestigationPrerequisiteResponse]
     replayed: bool
     started_at: datetime
     finished_at: datetime

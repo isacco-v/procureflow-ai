@@ -53,4 +53,4 @@ def test_engine_uses_the_configured_database_without_connecting(monkeypatch) -> 
 def test_alembic_has_a_single_baseline_head() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["20261117_0006"]
+    assert script.get_heads() == ["20261117_0007"]

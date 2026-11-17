@@ -173,6 +173,7 @@ def _recommend(
     summary = str(extra.pop("summary", _CREDIT))
     citations = list(extra.pop("citations", ["POL-QTY-001"]))
     unresolved = list(extra.pop("unresolved", []))
+    prerequisites = extra.pop("prerequisites", None)
     decision_action = extra.pop("decision_action", None)
     if not isinstance(decision_action, DecisionAction):
         decision_action = (
@@ -199,6 +200,11 @@ def _recommend(
             "citation_section_codes": citations,
             "evidence_labels": ["finding:sample"],
             "unresolved": unresolved or ["The script recorded an open question."],
+            "prerequisites": (
+                [{"kind": "future_delivery", "status": "unconfirmed"}]
+                if action is RecommendedAction.REQUEST_QUANTITY_CREDIT and prerequisites is None
+                else list(prerequisites or [])
+            ),
         },
     )
 
@@ -470,13 +476,15 @@ def test_unconditional_credit_is_rejected_after_the_lines_are_present() -> None:
                     summary=(
                         "The remaining 20 units will never be delivered. Request a credit. "
                         "No invoice was approved and no payment was initiated."
-                    )
+                    ),
+                    prerequisites=[],
                 ),
                 _recommend(
                     summary=(
                         "The remaining 20 units will never be delivered. Request a credit. "
                         "No invoice was approved and no payment was initiated."
-                    )
+                    ),
+                    prerequisites=[],
                 ),
             ]
         ),
@@ -485,6 +493,69 @@ def test_unconditional_credit_is_rejected_after_the_lines_are_present() -> None:
     assert result.evidence_validated is False
     assert result.recommended_action == "inconclusive"
     assert "conditional" in " ".join(result.missing_evidence).lower()
+
+
+def test_conditional_wording_without_the_prerequisite_is_rejected() -> None:
+    result = _run(
+        _complete_quantity_tools(),
+        model=ScriptedModel(
+            [
+                _call(
+                    "get_purchase_order",
+                    "get_delivery_notes",
+                    "get_invoices",
+                    "search_procurement_policy",
+                ),
+                _recommend(summary=_CREDIT, prerequisites=[]),
+                _recommend(summary=_CREDIT, prerequisites=[]),
+            ]
+        ),
+    )
+
+    assert result.evidence_validated is False
+    assert result.recommended_action == "inconclusive"
+    assert "future-delivery prerequisite" in " ".join(result.missing_evidence)
+
+
+def test_structured_prerequisite_accepts_a_credit_without_marker_phrases() -> None:
+    result = _run(
+        _complete_quantity_tools(),
+        model=ScriptedModel(
+            [
+                _call(
+                    "get_purchase_order",
+                    "get_delivery_notes",
+                    "get_invoices",
+                    "search_procurement_policy",
+                ),
+                _recommend(
+                    summary=(
+                        "Ordered 100, delivered 80, invoiced 100, difference 20. "
+                        "Request a quantity credit. "
+                        "No invoice was approved and no payment was initiated."
+                    ),
+                    prerequisites=[{"kind": "future_delivery", "status": "unconfirmed"}],
+                ),
+            ]
+        ),
+    )
+
+    assert result.status == "completed"
+    assert result.evidence_validated is True
+    assert result.recommended_action == "request_quantity_credit"
+    assert result.prerequisites == [{"kind": "future_delivery", "status": "unconfirmed"}]
+    assert "only if the supplier" not in (result.summary or "")
+
+
+def _complete_quantity_tools():
+    return _tools(
+        _finding(),
+        **{
+            "get_purchase_order": _po(),
+            "get_delivery_notes": _delivery("DN-B-100"),
+            "get_invoices": _invoice(),
+        },
+    )
 
 
 def test_ambiguous_product_requires_explicit_uncertainty() -> None:

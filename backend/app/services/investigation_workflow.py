@@ -92,6 +92,7 @@ class InvestigationState(TypedDict, total=False):
     possible_explanations: list[str]
     missing_evidence: list[str]
     next_actions: list[str]
+    prerequisites: list[dict[str, Any]]
     evidence_feedback: list[dict[str, Any]]
     evidence_validated: bool
     tool_count_at_rejection: int
@@ -116,6 +117,7 @@ class WorkflowResult:
     possible_explanations: list[str]
     missing_evidence: list[str]
     next_actions: list[str]
+    prerequisites: list[dict[str, Any]]
     evidence_validated: bool
     input_tokens: int
     output_tokens: int
@@ -408,6 +410,7 @@ def _compile(
             "possible_explanations": hydrated["possible_explanations"],
             "missing_evidence": hydrated["missing_evidence"],
             "next_actions": hydrated["next_actions"],
+            "prerequisites": hydrated["prerequisites"],
             "evidence_feedback": [],
             "evidence_validated": True,
             "error_code": None,
@@ -496,6 +499,7 @@ def _initial(
         "possible_explanations": [],
         "missing_evidence": [],
         "next_actions": [],
+        "prerequisites": [],
         "evidence_feedback": [],
         "evidence_validated": False,
         "tool_count_at_rejection": -1,
@@ -522,6 +526,7 @@ def _result(state: InvestigationState) -> WorkflowResult:
         possible_explanations=list(state.get("possible_explanations") or []),
         missing_evidence=list(state.get("missing_evidence") or []),
         next_actions=list(state.get("next_actions") or []),
+        prerequisites=list(state.get("prerequisites") or []),
         evidence_validated=bool(state.get("evidence_validated")),
         input_tokens=int(state.get("input_tokens") or 0),
         output_tokens=int(state.get("output_tokens") or 0),
@@ -557,7 +562,7 @@ def _stop(
         list(state["events"]),
         "execution_stopped",
         detail,
-        {"error_code": error_code, "status": status.value},
+        _stop_payload(status, error_code),
     )
     update: dict[str, Any] = {
         "status": status.value,
@@ -572,6 +577,7 @@ def _stop(
         "possible_explanations": [],
         "missing_evidence": [],
         "next_actions": [],
+        "prerequisites": [],
         "evidence_feedback": [],
         "evidence_validated": False,
         "draft": None,
@@ -623,6 +629,7 @@ def _exhausted(
         "next_actions": [
             "A person should review the missing evidence before any financial decision."
         ],
+        "prerequisites": [],
         "evidence_feedback": [],
         "evidence_validated": False,
         "error_code": None,
@@ -693,6 +700,7 @@ def _accept_incomplete(
         "missing_evidence": missing,
         "next_actions": list(hydrated.get("next_actions") or [])
         or ["A person should review the missing evidence before any financial decision."],
+        "prerequisites": list(hydrated.get("prerequisites") or []),
         "evidence_feedback": [],
         "evidence_validated": False,
         "error_code": None,
@@ -778,6 +786,8 @@ def _stopped_model(
         "output_tokens": stop.output_tokens,
         "estimated_cost_usd": format(stop.estimated_cost_usd, "f"),
     }
+    if error_code in {"model_timeout", "timeout"}:
+        payload["usage_reported"] = False
     diagnostics = _public_diagnostics(stop.diagnostics)
     if diagnostics:
         payload["validation"] = diagnostics
@@ -855,6 +865,22 @@ def _decision_summary(reasoning_kind: str, decision: AgentDecision) -> str:
         f"{actor} returned a structured {decision.action.value} decision "
         f"({decision.decision_code})."
     )
+
+
+def _stop_payload(status: InvestigationStatus, error_code: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {"error_code": error_code, "status": status.value}
+    if status is InvestigationStatus.TIMED_OUT:
+        payload["usage_reported"] = False
+        payload["diagnostic"] = {
+            "category": "workflow_timeout",
+            "field_paths": [],
+            "error_codes": [error_code],
+            "graph_step": "workflow",
+            "tool_name": None,
+            "output_type": None,
+            "response_id": None,
+        }
+    return payload
 
 
 def _append(

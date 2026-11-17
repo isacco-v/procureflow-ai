@@ -200,6 +200,7 @@ def test_live_investigation_check_rejects_a_mock_and_an_uncited_policy() -> None
             "output_tokens": 4,
             "estimated_cost_usd": "0.000010",
             "evidence_validated": True,
+            "prerequisites": [{"kind": "future_delivery", "status": "unconfirmed"}],
             "citations": [{"section_code": "POL-QTY-001"}],
             "evidence": [
                 {"label": "purchase_order_line:PO-B-100:1:CEM-II-25"},
@@ -232,6 +233,53 @@ def test_live_investigation_check_rejects_a_mock_and_an_uncited_policy() -> None
     )
     assert live_reasons == []
     assert live_pass is True
+    prose_only, prose_reasons = assess_live_quantity_investigation(
+        {
+            "provider": "openai",
+            "reasoning_kind": "language_model",
+            "ai_mode": "openai",
+            "mock_execution": False,
+            "review_required": True,
+            "payment_authority": False,
+            "status": "completed",
+            "recommended_action": "request_quantity_credit",
+            "summary": (
+                "Ordered 100, delivered 80, invoiced 100. The remaining quantity may "
+                "still be delivered. Request a credit only if the supplier confirms "
+                "the balance will not be delivered."
+            ),
+            "prerequisites": [],
+            "input_tokens": 10,
+            "output_tokens": 4,
+            "estimated_cost_usd": "0.000010",
+            "evidence_validated": True,
+            "citations": [{"section_code": "POL-QTY-001"}],
+            "evidence": [
+                {"label": "purchase_order_line:PO-B-100:1:CEM-II-25"},
+                {"label": "delivery_note_line:DN-B-100:1:CEM-II-25"},
+                {"label": "invoice_line:INV-B-100:1:CEM-II-25"},
+            ],
+            "events": [
+                {
+                    "tool_name": "search_procurement_policy",
+                    "payload": {
+                        "policy_section_codes": ["POL-QTY-001"],
+                        "evidence_labels": [
+                            "purchase_order_line:PO-B-100:1:CEM-II-25",
+                            "delivery_note_line:DN-B-100:1:CEM-II-25",
+                            "invoice_line:INV-B-100:1:CEM-II-25",
+                        ],
+                    },
+                },
+                {"tool_name": "get_purchase_order", "payload": {}},
+                {"tool_name": "get_delivery_notes", "payload": {}},
+                {"tool_name": "get_invoices", "payload": {}},
+                {"tool_name": "get_reconciliation_findings", "payload": {}},
+            ],
+        }
+    )
+    assert prose_only is False
+    assert any("prerequisite" in reason.lower() for reason in prose_reasons)
     cited, cited_reasons = assess_live_quantity_investigation(
         {
             "provider": "openai",

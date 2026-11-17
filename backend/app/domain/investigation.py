@@ -135,6 +135,20 @@ class ValidationDiagnostic(BaseModel):
     response_id: str | None = Field(default=None, max_length=80)
 
 
+class RecommendationPrerequisite(BaseModel):
+    """A condition the recommendation depends on.
+
+    A quantity credit may declare only that future delivery of the remaining
+    quantity is unconfirmed. The schema has no status that treats that
+    balance as cancelled.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["future_delivery"]
+    status: Literal["unconfirmed"]
+
+
 class RecommendationDraft(BaseModel):
     """A recommendation the workflow can validate.
 
@@ -142,6 +156,8 @@ class RecommendationDraft(BaseModel):
     workflow copies excerpts from the retrieval result. Observed facts,
     possible explanations, missing evidence, and next actions stay separate
     so a short delivery is not written up as a cancelled balance.
+    ``prerequisites`` states those conditions explicitly. The workflow does
+    not infer them from the summary.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -157,6 +173,7 @@ class RecommendationDraft(BaseModel):
     possible_explanations: list[str] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
+    prerequisites: list[RecommendationPrerequisite] = Field(default_factory=list, max_length=4)
 
 
 class AgentDecision(BaseModel):

@@ -38,22 +38,6 @@ _DOCUMENT_TOOLS = {
     "delivery_note": "get_delivery_notes",
     "invoice": "get_invoices",
 }
-_CONDITIONAL_MARKERS = (
-    "may still be delivered",
-    "might still be delivered",
-    "remaining quantity may",
-    "balance may remain open",
-    "does not establish that the remaining",
-    "does not establish that the balance",
-    "do not show that the remaining",
-    "does not show that the remaining",
-    "does not show that the balance",
-    "if the supplier confirms",
-    "only if the supplier",
-    "conditional on",
-    "pending confirmation",
-    "delivery status is uncertain",
-)
 
 
 @dataclass(frozen=True)
@@ -112,12 +96,13 @@ def assess_evidence(
     for row in product:
         gaps.extend(_product_gaps(row, lines, policies, draft))
     if quantity and draft is not None and draft.action.value == "request_quantity_credit":
-        if not _credit_is_conditional(_recommendation_text(draft)):
+        if not _quantity_credit_is_conditional(draft):
             gaps.append(
                 _gap(
                     "conditional_credit",
-                    "A quantity credit must stay conditional. The retrieved delivery "
-                    "records do not show that the remaining quantity will never be delivered.",
+                    "A quantity credit must stay conditional. It needs an unconfirmed "
+                    "future-delivery prerequisite. The retrieved delivery records do not "
+                    "establish that the remaining quantity is cancelled.",
                     product_code=_text(quantity[0].get("product_code")),
                 )
             )
@@ -514,11 +499,13 @@ def _run_owner(result: dict[str, Any]) -> str | None:
     return str(run_id)
 
 
-def _credit_is_conditional(text: str) -> bool:
-    lowered = text.lower()
-    if "never be delivered" in lowered:
-        return False
-    return any(marker in lowered for marker in _CONDITIONAL_MARKERS)
+def _quantity_credit_is_conditional(draft: RecommendationDraft) -> bool:
+    """A credit is conditional only when it declares that future delivery is unconfirmed."""
+
+    return any(
+        item.kind == "future_delivery" and item.status == "unconfirmed"
+        for item in draft.prerequisites
+    )
 
 
 def _uncertainty_is_explicit(action: str, text: str) -> bool:

@@ -176,7 +176,7 @@ def test_domain_migration_round_trip_and_quantity_constraint(migrated_database: 
                     text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
                 ).scalars()
             )
-        assert version == "20261117_0006"
+        assert version == "20261117_0007"
         assert "reconciliation_findings" in tables
         assert "investigations" in tables
         assert "uploaded_documents" in tables

@@ -189,6 +189,9 @@ def _outcome(**overrides: Any) -> SimpleNamespace:
         "citation_section_codes": ["POL-QTY-001", "POL-APR-001"],
         "evidence_labels": [_FINDING, "policy:POL-QTY-001"],
         "missing_evidence": [],
+        "prerequisites": [
+            {"kind": "future_delivery", "status": "unconfirmed"},
+        ],
         "review_required": True,
     }
     payload.update(overrides)
@@ -217,6 +220,7 @@ def _inconclusive(**overrides: Any) -> SimpleNamespace:
             "reconciliation_findings",
             "conditional_credit",
         ],
+        "prerequisites": [],
         "review_required": True,
     }
     values.update(overrides)
@@ -244,8 +248,11 @@ def test_tool_schemas_are_strict_and_closed() -> None:
         _assert_strict_object(tool["parameters"])
     outcome = next(tool for tool in INVESTIGATION_TOOLS if tool["name"] == OUTCOME_TOOL)
     review = outcome["parameters"]["properties"]["review_required"]
+    prerequisite = outcome["parameters"]["properties"]["prerequisites"]["items"]
     assert review["type"] == "boolean"
     assert review["enum"] == [True]
+    assert prerequisite["properties"]["kind"]["enum"] == ["future_delivery"]
+    assert prerequisite["properties"]["status"]["enum"] == ["unconfirmed"]
     assert outcome["parameters"]["properties"]["finding_summaries"]["maxItems"] == 20
     encoded = json.dumps(INVESTIGATION_TOOLS)
     assert "minLength" not in encoded
@@ -326,7 +333,7 @@ def test_model_selects_tools_and_a_structured_outcome() -> None:
         assert [tool["name"] for tool in payload["tools"]] == [
             tool["name"] for tool in INVESTIGATION_TOOLS
         ]
-        assert call["timeout_seconds"] == 10
+        assert call["timeout_seconds"] == 30
         assert "sk-test-not-a-real-key" not in json.dumps(payload)
     assert _FORBIDDEN_KEYS.isdisjoint(_event_keys(result))
 
@@ -558,7 +565,19 @@ def test_timeout_stops_without_a_recommendation() -> None:
     assert result.status == "timed_out"
     assert result.error_code == "model_timeout"
     assert result.recommended_action is None
+    assert result.input_tokens == 0
+    assert result.output_tokens == 0
+    assert result.estimated_cost_usd == Decimal("0")
     assert len(transport.calls) == 1
+    stopped = next(
+        event for event in result.events if event["event_type"] == "model_request_stopped"
+    )
+    assert stopped["payload"]["usage_reported"] is False
+    assert stopped["payload"]["input_tokens"] == 0
+    diagnostic = stopped["payload"]["validation"][0]
+    assert diagnostic["category"] == "request_timeout"
+    assert diagnostic["error_codes"] == ["model_timeout", "usage_unreported"]
+    assert diagnostic["graph_step"] == "decide"
 
 
 def test_incomplete_response_does_not_execute_its_tool_call() -> None:
@@ -981,6 +1000,7 @@ def test_recorded_live_reports_and_historical_events_stay_intact() -> None:
     root = Path(__file__).resolve().parents[2]
     first = (root / "docs/experiments/PF-LIVE-INVESTIGATE-CASE-B.txt").read_text()
     second = (root / "docs/experiments/PF-LIVE-INVESTIGATE-CASE-B-V2.txt").read_text()
+    third = (root / "docs/experiments/PF-LIVE-INVESTIGATE-CASE-B-V3.txt").read_text()
     historical = InvestigationEventResponse(
         ordinal=7,
         event_type="model_request_stopped",
@@ -999,7 +1019,282 @@ def test_recorded_live_reports_and_historical_events_stay_intact() -> None:
     assert "56588ede-2b7c-4c06-940b-734ed6e0bd63" in second
     assert "status=invalid_output" in second
     assert "The model output did not match the investigation schema." in second
+    assert "686c5045-ab14-4386-9df7-1b60c3761cd4" in third
+    assert "wall clock 15 seconds" in third
     assert "validation" not in historical.payload
+
+
+class MutableClock:
+    def __init__(self, now: float = 0) -> None:
+        self.now = now
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+class AdvancingTransport(ScriptedTransport):
+    def __init__(
+        self,
+        responses: list[Any],
+        clock: MutableClock,
+        advances: list[float],
+    ) -> None:
+        super().__init__(responses)
+        self._clock = clock
+        self._advances = list(advances)
+
+    def create(self, *, timeout_seconds: float, payload: dict[str, Any]) -> Any:
+        self.calls.append({"timeout_seconds": timeout_seconds, "payload": payload})
+        if self._advances:
+            self._clock.now += self._advances.pop(0)
+        if not self._responses:
+            raise AssertionError("The adapter made a model request that the test did not script.")
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def test_investigation_completes_after_fifteen_seconds_and_inside_ninety() -> None:
+    clock = MutableClock()
+    transport = AdvancingTransport(
+        [
+            _response(
+                [
+                    _case_call("get_purchase_order", "call_po"),
+                    _case_call("get_delivery_notes", "call_dn"),
+                    _case_call("get_invoices", "call_inv"),
+                ]
+            ),
+            _response(
+                [
+                    _outcome(
+                        citation_section_codes=[],
+                        evidence_labels=[
+                            _FINDING,
+                            "purchase_order:PO-B-100",
+                            "delivery_note:DN-B-100",
+                            "invoice:INV-B-100",
+                        ],
+                    )
+                ]
+            ),
+            _response(
+                [
+                    _function(
+                        "search_procurement_policy",
+                        {"query": "quantity discrepancy"},
+                        "call_search",
+                    )
+                ]
+            ),
+            _response([_outcome()]),
+        ],
+        clock,
+        [20, 20, 20, 20],
+    )
+
+    result = run_workflow(
+        case_id=_CASE_ID,
+        reconciliation_run_id=_RUN_ID,
+        ai_mode="openai",
+        model=_model(transport),
+        tools=_quantity_tools(),
+        budgets=_budgets(timeout_seconds=90, max_estimated_cost_usd=Decimal("0.10")),
+        clock=clock,
+    )
+
+    assert result.status == "completed"
+    assert result.evidence_validated is True
+    assert result.recommended_action == "request_quantity_credit"
+    assert result.prerequisites == [{"kind": "future_delivery", "status": "unconfirmed"}]
+    assert any(event["event_type"] == "evidence_rejected" for event in result.events)
+    assert clock.now == 80
+    assert 15 < clock.now < 90
+    assert len(transport.calls) == 4
+    assert all(call["timeout_seconds"] == pytest.approx(30, abs=0.5) for call in transport.calls)
+
+
+def test_request_timeout_is_capped_by_the_time_still_remaining() -> None:
+    clock = MutableClock()
+    transport = AdvancingTransport(
+        [
+            _response([_case_call("get_invoices", "call_inv")]),
+            _response([_inconclusive()]),
+        ],
+        clock,
+        [75, 0],
+    )
+
+    result = run_workflow(
+        case_id=_CASE_ID,
+        reconciliation_run_id=_RUN_ID,
+        ai_mode="openai",
+        model=_model(transport),
+        tools=_quantity_tools(),
+        budgets=_budgets(timeout_seconds=90),
+        clock=clock,
+    )
+
+    assert result.status == "inconclusive"
+    assert transport.calls[0]["timeout_seconds"] == pytest.approx(30, abs=0.5)
+    assert transport.calls[1]["timeout_seconds"] == pytest.approx(15, abs=0.5)
+    assert len(transport.calls) == 2
+
+
+def test_later_request_timeout_keeps_earlier_usage_and_is_not_retried() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    transport = ScriptedTransport(
+        [
+            _response([_case_call("get_invoices", "call_inv")], input_tokens=100, output_tokens=40),
+            APITimeoutError(request),
+            _response([_inconclusive()]),
+        ]
+    )
+
+    result = _run(transport)
+
+    assert len(transport.calls) == 2
+    assert result.status == "timed_out"
+    assert result.error_code == "model_timeout"
+    assert result.recommended_action is None
+    assert result.input_tokens == 100
+    assert result.output_tokens == 40
+    stopped = next(
+        event for event in result.events if event["event_type"] == "model_request_stopped"
+    )
+    assert stopped["payload"]["usage_reported"] is False
+    assert stopped["payload"]["input_tokens"] == 0
+    assert stopped["payload"]["output_tokens"] == 0
+    diagnostic = stopped["payload"]["validation"][0]
+    assert diagnostic["category"] == "request_timeout"
+    assert "usage_unreported" in diagnostic["error_codes"]
+
+
+def test_workflow_timeout_stops_before_another_model_request() -> None:
+    clock = MutableClock()
+    transport = AdvancingTransport(
+        [
+            _response([_case_call("get_invoices", "call_inv")], input_tokens=11, output_tokens=2),
+            _response([_inconclusive()]),
+        ],
+        clock,
+        [90],
+    )
+
+    result = run_workflow(
+        case_id=_CASE_ID,
+        reconciliation_run_id=_RUN_ID,
+        ai_mode="openai",
+        model=_model(transport),
+        tools=_quantity_tools(),
+        budgets=_budgets(timeout_seconds=90),
+        clock=clock,
+    )
+
+    assert len(transport.calls) == 1
+    assert result.status == "timed_out"
+    assert result.error_code == "timeout"
+    assert result.recommended_action is None
+    assert result.input_tokens == 11
+    stopped = next(event for event in result.events if event["event_type"] == "execution_stopped")
+    assert stopped["payload"]["diagnostic"]["category"] == "workflow_timeout"
+    assert stopped["payload"]["usage_reported"] is False
+
+
+def test_no_request_is_sent_when_the_workflow_clock_is_spent() -> None:
+    from app.ai.investigation_errors import InvestigationModelStop
+    from app.domain.investigation import DecisionObservation
+
+    transport = ExplodingTransport()
+    observation = DecisionObservation(
+        case_id=str(_CASE_ID),
+        reconciliation_run_id=str(_RUN_ID),
+        tools=[],
+        untrusted_instruction_detected=False,
+        iteration=1,
+        constraints=[],
+        remaining_seconds=0,
+        remaining_budget_usd=Decimal("0.10"),
+    )
+
+    with pytest.raises(InvestigationModelStop) as caught:
+        _model(transport).decide(observation)
+
+    assert transport.calls == []
+    assert caught.value.error_code == "timeout"
+    assert caught.value.input_tokens == 0
+    assert caught.value.diagnostics[0]["category"] == "workflow_timeout"
+    assert "usage_unreported" in caught.value.diagnostics[0]["error_codes"]
+
+
+def test_cancelled_delivery_status_is_a_schema_mismatch_and_is_not_retried_as_valid() -> None:
+    transport = ScriptedTransport(
+        [
+            _response(
+                [_outcome(prerequisites=[{"kind": "future_delivery", "status": "cancelled"}])]
+            ),
+            _response([_inconclusive()]),
+        ]
+    )
+
+    result = _run(transport)
+
+    assert len(transport.calls) == 2
+    assert result.status == "inconclusive"
+    assert result.recommended_action == "inconclusive"
+    diagnostic = _validation(result)[0]
+    assert diagnostic["category"] == "schema_mismatch"
+    assert any(path.startswith("prerequisites") for path in diagnostic["field_paths"])
+
+
+def test_evidence_rejection_then_timeout_does_not_send_another_paid_request() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    transport = ScriptedTransport(
+        [
+            _response(
+                [
+                    _case_call("get_purchase_order", "call_po"),
+                    _case_call("get_delivery_notes", "call_dn"),
+                    _case_call("get_invoices", "call_inv"),
+                ],
+                input_tokens=50,
+                output_tokens=10,
+            ),
+            _response(
+                [
+                    _outcome(
+                        citation_section_codes=[],
+                        evidence_labels=[
+                            _FINDING,
+                            "purchase_order:PO-B-100",
+                            "delivery_note:DN-B-100",
+                            "invoice:INV-B-100",
+                        ],
+                    )
+                ],
+                input_tokens=20,
+                output_tokens=5,
+            ),
+            APITimeoutError(request),
+            _response([_outcome()]),
+        ]
+    )
+
+    result = _run(transport)
+
+    assert len(transport.calls) == 3
+    assert result.evidence_validated is False
+    assert result.recommended_action == "inconclusive"
+    assert result.input_tokens == 70
+    assert result.output_tokens == 15
+    assert any(event["event_type"] == "evidence_rejected" for event in result.events)
+    stopped = next(
+        event for event in result.events if event["event_type"] == "model_request_stopped"
+    )
+    assert stopped["payload"]["error_code"] == "model_timeout"
+    assert stopped["payload"]["usage_reported"] is False
+    assert stopped["payload"]["input_tokens"] == 0
 
 
 def _assert_strict_object(schema: dict[str, Any]) -> None:

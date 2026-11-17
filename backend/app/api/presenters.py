@@ -23,6 +23,7 @@ from app.schemas.investigation import (
     InvestigationEventResponse,
     InvestigationEvidenceResponse,
     InvestigationFindingResponse,
+    InvestigationPrerequisiteResponse,
     InvestigationResponse,
 )
 from app.schemas.procurement import (
@@ -257,6 +258,10 @@ def investigation_response(
         possible_explanations=list(investigation.possible_explanations or []),
         missing_evidence=list(investigation.missing_evidence or []),
         next_actions=list(investigation.next_actions or []),
+        prerequisites=[
+            InvestigationPrerequisiteResponse.model_validate(item)
+            for item in investigation.prerequisites or []
+        ],
         replayed=replayed,
         started_at=investigation.started_at,
         finished_at=investigation.finished_at,

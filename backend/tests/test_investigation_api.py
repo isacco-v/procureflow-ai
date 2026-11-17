@@ -46,6 +46,7 @@ def test_case_b_quantity_investigation_is_stored_once(postgres_client: TestClien
     assert body["attempt"] == 1
     assert body["evidence_validated"] is True
     assert body["observed_facts"]
+    assert body["prerequisites"] == []
     assert "may still be delivered" in body["summary"]
     assert body["review_required"] is True
     assert body["payment_authority"] is False

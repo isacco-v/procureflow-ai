@@ -94,7 +94,7 @@ def _budgets(**overrides: object) -> InvestigationBudgets:
     values: dict[str, object] = {
         "max_iterations": 8,
         "max_tool_calls": 12,
-        "timeout_seconds": 15,
+        "timeout_seconds": 90,
         "max_estimated_cost_usd": Decimal("0.50"),
     }
     values.update(overrides)
@@ -417,6 +417,10 @@ def test_timeout_stops_without_a_decision() -> None:
     assert result.error_code == "timeout"
     assert result.iteration_count == 0
     assert result.recommended_action is None
+    stopped = next(event for event in result.events if event["event_type"] == "execution_stopped")
+    assert stopped["payload"]["usage_reported"] is False
+    assert stopped["payload"]["diagnostic"]["category"] == "workflow_timeout"
+    assert stopped["payload"]["diagnostic"]["error_codes"] == ["timeout"]
 
 
 def test_invalid_structured_output_is_rejected() -> None:

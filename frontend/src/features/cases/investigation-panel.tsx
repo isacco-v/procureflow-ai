@@ -219,6 +219,13 @@ function InvestigationResult({
         title='Recommended next actions'
         items={investigation.next_actions}
       />
+      <EvidenceNotes
+        title='Prerequisites'
+        items={investigation.prerequisites.map(
+          (item) =>
+            `${item.kind}: ${item.status}. The remaining quantity may still be delivered.`
+        )}
+      />
       {investigation.error_detail ? (
         <p className='text-sm text-destructive' role='alert'>
           {investigation.error_detail}

@@ -192,6 +192,11 @@ const investigationEventSchema = z.object({
   created_at: z.string(),
 })
 
+const prerequisiteSchema = z.object({
+  kind: z.literal('future_delivery'),
+  status: z.literal('unconfirmed'),
+})
+
 const investigationSchema = z.object({
   id: z.uuid(),
   case_id: z.uuid(),
@@ -246,6 +251,7 @@ const investigationSchema = z.object({
   possible_explanations: z.array(z.string()),
   missing_evidence: z.array(z.string()),
   next_actions: z.array(z.string()),
+  prerequisites: z.array(prerequisiteSchema),
   replayed: z.boolean(),
   started_at: z.string(),
   finished_at: z.string(),

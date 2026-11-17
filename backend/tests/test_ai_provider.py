@@ -94,6 +94,12 @@ def test_defaults_use_mock_mode_without_an_env_file() -> None:
     assert settings.openai_model == "gpt-5.4-mini"
     assert settings.investigation_live_enabled is False
     assert settings.investigation_max_estimated_cost_usd == Decimal("0.10")
+    assert settings.investigation_max_llm_requests == 6
+    assert settings.investigation_max_iterations == 8
+    assert settings.investigation_max_tool_calls == 12
+    assert settings.openai_request_timeout_seconds == 30
+    assert settings.investigation_timeout_seconds == 90
+    assert settings.extraction_request_timeout_seconds == 20
     assert settings.openai_input_usd_per_million == Decimal("0.75")
     assert settings.openai_output_usd_per_million == Decimal("4.50")
 

@@ -85,6 +85,7 @@ def hydrate_recommendation(
         "possible_explanations": list(parsed.possible_explanations),
         "missing_evidence": list(parsed.missing_evidence),
         "next_actions": list(parsed.next_actions),
+        "prerequisites": [item.model_dump(mode="json") for item in parsed.prerequisites],
     }
 
 

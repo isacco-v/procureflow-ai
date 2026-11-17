@@ -36,6 +36,7 @@ from app.domain.investigation import (
     InvestigationStatus,
     ReasoningKind,
     RecommendationDraft,
+    RecommendationPrerequisite,
     RecommendedAction,
     StructuredFindingDraft,
     ToolCall,
@@ -83,7 +84,10 @@ Evidence:
 - Separate observed facts, possible explanations, missing evidence, and
   recommended next actions.
 - A short delivery does not prove that the remaining quantity will never be
-  delivered. Keep a credit request conditional on the retrieved documents.
+  delivered. A request_quantity_credit must include a prerequisite with kind
+  future_delivery and status unconfirmed. That status means the remaining
+  quantity may still be delivered. The schema has no status for a cancelled
+  balance. Other actions send an empty prerequisites list.
   Supplier clarification or an invoice hold is appropriate when delivery
   completion is uncertain.
 - When product identity is not established, say so. Similar descriptions are
@@ -129,6 +133,19 @@ _FINDING_SCHEMA: dict[str, Any] = {
     "required": ["code", "summary", "evidence_labels"],
     "additionalProperties": False,
 }
+_PREREQUISITE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "A condition the recommendation depends on. "
+        "A quantity credit uses kind future_delivery and status unconfirmed."
+    ),
+    "properties": {
+        "kind": {"type": "string", "enum": ["future_delivery"]},
+        "status": {"type": "string", "enum": ["unconfirmed"]},
+    },
+    "required": ["kind", "status"],
+    "additionalProperties": False,
+}
 _OUTCOME_PARAMETERS: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -145,6 +162,11 @@ _OUTCOME_PARAMETERS: dict[str, Any] = {
         "observed_facts": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
         "possible_explanations": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
         "next_actions": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+        "prerequisites": {
+            "type": "array",
+            "items": _PREREQUISITE_SCHEMA,
+            "maxItems": 4,
+        },
         "review_required": {
             "type": "boolean",
             "enum": [True],
@@ -162,6 +184,7 @@ _OUTCOME_PARAMETERS: dict[str, Any] = {
         "observed_facts",
         "possible_explanations",
         "next_actions",
+        "prerequisites",
         "review_required",
     ],
     "additionalProperties": False,
@@ -238,6 +261,7 @@ class RecordedInvestigationOutcome(BaseModel):
     observed_facts: list[str] = Field(default_factory=list, max_length=20)
     possible_explanations: list[str] = Field(default_factory=list, max_length=20)
     next_actions: list[str] = Field(default_factory=list, max_length=20)
+    prerequisites: list[RecommendationPrerequisite] = Field(max_length=4)
     review_required: Literal[True]
 
 
@@ -341,6 +365,7 @@ class OpenAIInvestigationModel:
                         InvestigationStatus.TIMED_OUT,
                         "timeout",
                         "The time limit was reached before another model request was sent.",
+                        diagnostics=[_timeout_diagnostic(sent=False)],
                     ),
                     spent,
                     diagnostics,
@@ -497,11 +522,7 @@ class OpenAIInvestigationModel:
         try:
             return self._transport.create(timeout_seconds=timeout, payload=payload)
         except APITimeoutError as exc:
-            raise InvestigationModelStop(
-                InvestigationStatus.TIMED_OUT,
-                "model_timeout",
-                "The model request timed out before a decision was returned.",
-            ) from exc
+            raise _request_timeout() from exc
         except APIStatusError as exc:
             raise InvestigationModelStop(
                 InvestigationStatus.FAILED,
@@ -521,11 +542,7 @@ class OpenAIInvestigationModel:
                 "The model request failed.",
             ) from exc
         except TimeoutError as exc:
-            raise InvestigationModelStop(
-                InvestigationStatus.TIMED_OUT,
-                "model_timeout",
-                "The model request timed out before a decision was returned.",
-            ) from exc
+            raise _request_timeout() from exc
 
     def _usage(self, response: Any, reservation: RequestReservation) -> _Usage:
         actual = _read_usage(response)
@@ -725,6 +742,7 @@ def _outcome_decision(item: Any, usage: _Usage, response_id: str | None) -> Agen
                 possible_explanations=list(parsed.possible_explanations),
                 missing_evidence=list(parsed.missing_evidence),
                 next_actions=list(parsed.next_actions),
+                prerequisites=list(parsed.prerequisites),
             ),
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
@@ -980,6 +998,27 @@ class _OutcomeRejected(Exception):
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+
+
+def _timeout_diagnostic(*, sent: bool) -> dict[str, Any]:
+    codes = ["model_timeout", "usage_unreported"] if sent else ["timeout", "usage_unreported"]
+    return _diagnostic(
+        category="request_timeout" if sent else "workflow_timeout",
+        field_paths=[],
+        error_codes=codes,
+        tool_name=None,
+        output_type=None,
+        response_id=None,
+    )
+
+
+def _request_timeout() -> InvestigationModelStop:
+    return InvestigationModelStop(
+        InvestigationStatus.TIMED_OUT,
+        "model_timeout",
+        "The model request timed out before a decision was returned.",
+        diagnostics=[_timeout_diagnostic(sent=True)],
+    )
 
 
 def _diagnostic(

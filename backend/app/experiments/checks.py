@@ -184,8 +184,8 @@ def _recommendation(record: dict[str, object], summary: str) -> tuple[bool, str]
         return False, (
             "The quantity investigation did not recommend clarification or a conditional credit."
         )
-    if action == "request_quantity_credit" and not _conditional(summary):
-        return False, "The credit recommendation is not conditional on the remaining delivery."
+    if action == "request_quantity_credit" and not _structured_credit_condition(record):
+        return False, "The credit has no unconfirmed future-delivery prerequisite."
     if re.search(r"never be delivered", summary, re.IGNORECASE):
         return False, "The recommendation assumes the remaining quantity will never be delivered."
     return True, "The recommendation stays conditional and requires human review."
@@ -237,6 +237,18 @@ def _hidden(record: dict[str, object]) -> tuple[bool, str]:
         if isinstance(payload, dict) and _FORBIDDEN_EVENT_KEYS.intersection(payload):
             return False, "An event stored hidden reasoning."
     return True, "Event payloads do not store hidden reasoning."
+
+
+def _structured_credit_condition(record: dict[str, object]) -> bool:
+    raw = record.get("prerequisites")
+    if not isinstance(raw, list):
+        return False
+    return any(
+        isinstance(item, dict)
+        and item.get("kind") == "future_delivery"
+        and item.get("status") == "unconfirmed"
+        for item in raw
+    )
 
 
 def _conditional(text: str) -> bool:

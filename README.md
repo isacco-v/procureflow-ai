@@ -12,7 +12,7 @@ This repository has a runnable API, a deterministic three-way matcher, a lexical
 - `GET /health` returns the service name, environment, and `ai_mode`. It does not contact the database or a model.
 - `AI_MODE=mock` is the default. The mock provider is deterministic and makes no network call.
 - `AI_MODE=openai` does not by itself call a model. A live investigation also needs `INVESTIGATION_LIVE_ENABLED=true` and a server-side `OPENAI_API_KEY`. All three are off in the default configuration. The completion helper still refuses `openai` and never builds a client.
-- PostgreSQL stores suppliers, procurement cases, source documents, purchase orders, delivery notes, invoices, reconciliation runs, policy sections, and investigations. Alembic revisions are `20261116_0001` (empty baseline), `20261116_0002` (domain tables), `20261117_0003` (policy and investigation tables), `20261117_0004` (document intake), `20261117_0005` (separate mock and live rows), and `20261117_0006` (investigation attempts). Existing investigation rows are not rewritten.
+- PostgreSQL stores suppliers, procurement cases, source documents, purchase orders, delivery notes, invoices, reconciliation runs, policy sections, and investigations. Alembic revisions are `20261116_0001` (empty baseline), `20261116_0002` (domain tables), `20261117_0003` (policy and investigation tables), `20261117_0004` (document intake), `20261117_0005` (separate mock and live rows), and `20261117_0007` (structured recommendation prerequisites). Existing investigation rows are not rewritten.
 - `POST /api/v1/dev/seed` loads five synthetic cases when `APP_ENV` is `local`, `test`, or `development`. Running it again does not duplicate them.
 - `GET /api/v1/cases` and `GET /api/v1/cases/{case_id}` return those cases. Quantities and money are decimal strings.
 - `POST /api/v1/cases/{case_id}/reconciliation` runs the matcher and stores the report. The same stored documents return the existing run.
@@ -103,7 +103,7 @@ GitHub Actions runs the same backend checks and the frontend build.
 
 The default run is a mock investigation. `MockInvestigationModel` chooses tools from the stored finding codes. It does not call a language model. The screen and the API say so.
 
-The live path is `OpenAIInvestigationModel`. It uses the official OpenAI Python SDK and the Responses API. The configured model is `gpt-5.4-mini` unless `OPENAI_MODEL` is changed. The model receives the read-only tool schemas and chooses which ones to call. LangGraph executes those calls, sends the tool results back, and asks the model again. The model finishes by calling `record_investigation_outcome`. That call is not a database tool. The workflow checks every policy code and evidence label against data the tools actually returned. It then checks primary line evidence for the finding type. A missing purchase-order, delivery-note, or invoice line rejects the outcome and returns the missing categories to the model, which still chooses the next tools. A citation or label that was not retrieved is rejected. If the limits run out before the lines are retrieved, the result is inconclusive and names the gap. A weak or refused result is inconclusive. Human review stays required, and nothing in the run can approve a payment. The scripted mock is still a test double. It is not the live model's tool plan.
+The live path is `OpenAIInvestigationModel`. It uses the official OpenAI Python SDK and the Responses API. The configured model is `gpt-5.4-mini` unless `OPENAI_MODEL` is changed. The model receives the read-only tool schemas and chooses which ones to call. LangGraph executes those calls, sends the tool results back, and asks the model again. The model finishes by calling `record_investigation_outcome`. That call is not a database tool. The workflow checks every policy code and evidence label against data the tools actually returned. It then checks primary line evidence for the finding type. A missing purchase-order, delivery-note, or invoice line rejects the outcome and returns the missing categories to the model, which still chooses the next tools. A citation or label that was not retrieved is rejected. A quantity credit is accepted only when the outcome includes a structured prerequisite, `future_delivery` / `unconfirmed`, stating that the remaining quantity may still be delivered. The gate does not infer that condition from phrases in the summary. If the limits run out before the lines are retrieved, the result is inconclusive and names the gap. A weak or refused result is inconclusive. Human review stays required, and nothing in the run can approve a payment. The scripted mock is still a test double. It is not the live model's tool plan.
 
 Document text and policy text are sent as untrusted data. They do not replace the system instructions or the tool list. Tool arguments are validated again on the server. The model cannot run a query, read the filesystem, or open its own network connection.
 
@@ -125,8 +125,8 @@ Other limits, all counted inside one investigation:
 | Decision iterations | 8 | The run stops before another decision |
 | Tool calls | 12 | Includes the workflow's first findings load |
 | Output tokens | 1200 | Sent as `max_output_tokens` |
-| Request timeout | 10 seconds | Capped by the time still left in the run |
-| Wall clock | 15 seconds | The run stops before the next step |
+| Request timeout | 30 seconds | Capped by the time still left in the run |
+| Wall clock | 90 seconds | The run stops before the next step |
 | Estimated cost | $0.10 | See the reservation rules above |
 
 The live client uses `max_retries=0` and `store=false`. Conversation state for the next tool round is the prior response output, including reasoning items and their encrypted content, plus one `function_call_output` per `call_id`. That list lives in memory for the request only. Hidden reasoning text is not written to the investigation record or the logs. The Cases screen shows a live run as **Live LLM investigation**, with the model id, status, tool events, evidence, recommendation, token counts, and the estimated USD cost.
@@ -146,14 +146,14 @@ Backend values live in the root `.env`. Frontend values live in `frontend/.env`.
 | `AI_MODE` | `mock` or `openai`. `mock` is the default and makes no model call |
 | `OPENAI_MODEL` | Model id for a live investigation. Default `gpt-5.4-mini` |
 | `OPENAI_API_KEY` | Server-side only. Ignored unless live mode is fully enabled. Do not commit it |
-| `OPENAI_REQUEST_TIMEOUT_SECONDS` | Per-request timeout for the Responses API. Default 10 |
+| `OPENAI_REQUEST_TIMEOUT_SECONDS` | Per-request timeout for the Responses API. Default 30. A request uses the lesser of this value and the time left in the investigation |
 | `OPENAI_INPUT_USD_PER_MILLION` | Price-table input rate. Default `0.75` |
 | `OPENAI_OUTPUT_USD_PER_MILLION` | Price-table output rate. Default `4.50` |
 | `INVESTIGATION_MAX_ITERATIONS` | Decision steps before the run stops. Default 8 |
 | `INVESTIGATION_MAX_TOOL_CALLS` | Tool executions, including the initial findings load. Default 12 |
 | `INVESTIGATION_MAX_LLM_REQUESTS` | Model requests before the next one is skipped. Default 6 |
 | `INVESTIGATION_MAX_OUTPUT_TOKENS` | `max_output_tokens` for each model request. Default 1200 |
-| `INVESTIGATION_TIMEOUT_SECONDS` | Wall-clock budget for one investigation. Default 15 |
+| `INVESTIGATION_TIMEOUT_SECONDS` | Wall-clock budget for one investigation. Default 90. A timed-out request is not sent again |
 | `INVESTIGATION_MAX_ESTIMATED_COST_USD` | Estimated budget for one investigation. Default `0.10`. Not an invoice |
 | `INVESTIGATION_LIVE_ENABLED` | Must be `true`, with `AI_MODE=openai` and a server key, before a live investigation call. Default `false` |
 | `DOCUMENT_EXTRACTOR` | `mock` or `openai`. Default `mock`. The mock reads labeled page text and does not call a model |
